@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//d/projects/**)",
+      "Bash(cat frontend/package.json)",
+      "Bash(npm start)",
+      "WebSearch",
+      "Bash(pip install transformers torch pillow)",
+      "Bash(python main.py)",
+      "Bash(node -c:*)",
+      "Bash(npm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(grep:*)",
+      "Bash(pkill:*)",
+      "Bash(kill:*)",
+      "Bash(dir /s \"D:\\projects\\art-models\\artist-hub\")",
+      "Bash(rm:*)",
+      "Bash(rmdir:*)",
+      "Bash(mkdir:*)",
+      "Bash(pip install:*)",
+      "Bash(npm install)",
+      "Bash(python3:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(tasklist:*)",
+      "Bash(taskkill:*)",
+      "Bash(python -m uvicorn:*)",
+      "Bash(python:*)",
+      "Bash(uvicorn:*)",
+      "WebFetch(domain:developers.google.com)",
+      "Bash(PORT=3001 npm start)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

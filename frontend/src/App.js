@@ -1,0 +1,2953 @@
+import React, { useState, useEffect } from 'react';
+import { Routes, Route, useNavigate, useSearchParams } from 'react-router-dom';
+import { Camera, Clock, Image, Target, Video, Upload, Plus, X, Play, Pause, ChevronLeft, TrendingUp, BarChart3, Award, Calendar, Settings, RefreshCw, Check, AlertCircle, Palette, Trash2, Edit, Search, Download } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import './App.css';
+
+const API_URL = 'http://localhost:8000/api';
+
+// Main App Component
+export default function ArtistDevHub() {
+  const [skills, setSkills] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadSkills();
+  }, []);
+
+  const loadSkills = async () => {
+    try {
+      const response = await fetch(`${API_URL}/skills`);
+      const data = await response.json();
+      setSkills(data);
+      setLoading(false);
+    } catch (error) {
+      console.error('Failed to load skills:', error);
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="app">
+        <div className="loading-container">
+          <div className="spinner"></div>
+          <p className="loading-text">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="app">
+      <Routes>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/skills" element={<SkillsManager skills={skills} setSkills={setSkills} />} />
+        <Route path="/warmup" element={<DrawingWarmup skills={skills} />} />
+        <Route path="/critique" element={<CritiqueTool skills={skills} />} />
+        <Route path="/photos" element={<PhotoFinder skills={skills} />} />
+        <Route path="/video" element={<VideoExtractor />} />
+        <Route path="/progress" element={<ProgressAnalytics skills={skills} />} />
+        <Route path="/admin" element={<AdminPanel />} />
+        <Route path="/paints" element={<PaintManager />} />
+      </Routes>
+    </div>
+  );
+}
+
+// Dashboard Component
+function Dashboard() {
+  const navigate = useNavigate();
+  const tools = [
+    { id: 'critique', name: 'Artwork Critique', icon: Target, description: 'Get structured feedback on your work', color: 'purple' },
+    { id: 'warmup', name: 'Drawing Warmup', icon: Clock, description: 'Timed reference practice sessions', color: 'blue' },
+    { id: 'photos', name: 'Photo Finder', icon: Camera, description: 'Search and filter your photo collection', color: 'green' },
+    { id: 'skills', name: 'Skills Manager', icon: Target, description: 'Track and develop artistic skills', color: 'orange' },
+    { id: 'paints', name: 'Paint Manager', icon: Palette, description: 'Track your paints and pigments with RGB values', color: 'pink' },
+    { id: 'video', name: 'Video Frame Extractor', icon: Video, description: 'Extract key frames from videos', color: 'red' },
+    { id: 'progress', name: 'Progress & Analytics', icon: TrendingUp, description: 'Track your artistic development', color: 'teal' },
+    { id: 'admin', name: 'Admin Panel', icon: Settings, description: 'Manage Google Photos sync and settings', color: 'gray' }
+  ];
+
+  return (
+    <div className="container">
+      <div className="dashboard-header">
+        <h1 className="gradient-text">Artist Development Hub</h1>
+        <p className="subtitle">Your toolkit for artistic growth</p>
+      </div>
+
+      <div className="tools-grid">
+        {tools.map(tool => (
+          <button key={tool.id} onClick={() => navigate(`/${tool.id}`)} className="tool-card">
+            <div className={`tool-icon tool-icon-${tool.color}`}>
+              <tool.icon size={24} />
+            </div>
+            <h3>{tool.name}</h3>
+            <p>{tool.description}</p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Skills Manager Component
+function SkillsManager({ skills, setSkills }) {
+  const navigate = useNavigate();
+  const [newSkill, setNewSkill] = useState('');
+  const [showAddSkill, setShowAddSkill] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const addSkill = async () => {
+    if (newSkill.trim() && !skills.includes(newSkill.trim())) {
+      setSaving(true);
+      try {
+        const response = await fetch(`${API_URL}/skills`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ skill: newSkill.trim() })
+        });
+        const data = await response.json();
+        if (data.success) {
+          setSkills(data.skills);
+          setNewSkill('');
+          setShowAddSkill(false);
+        }
+      } catch (error) {
+        console.error('Failed to add skill:', error);
+        alert('Failed to add skill. Please try again.');
+      }
+      setSaving(false);
+    }
+  };
+
+  const removeSkill = async (skillToRemove) => {
+    if (window.confirm(`Remove "${skillToRemove}" from your skills?`)) {
+      try {
+        const response = await fetch(`${API_URL}/skills/${encodeURIComponent(skillToRemove)}`, {
+          method: 'DELETE'
+        });
+        const data = await response.json();
+        if (data.success) {
+          setSkills(data.skills);
+        }
+      } catch (error) {
+        console.error('Failed to remove skill:', error);
+        alert('Failed to remove skill. Please try again.');
+      }
+    }
+  };
+
+  return (
+    <div className="container">
+      <button onClick={() => navigate('/')} className="back-button">
+        <ChevronLeft size={20} />
+        Back to Dashboard
+      </button>
+
+      <div className="card">
+        <h2>Skills Manager</h2>
+        
+        <div className="info-box info-box-blue">
+          <h3>AI Recommendations</h3>
+          <p>Based on your recent practice, consider focusing on: <strong>Composition</strong> and <strong>Foreshortening with Value</strong></p>
+        </div>
+
+        <div className="skills-header">
+          <h3>Your Skills ({skills.length})</h3>
+          <button onClick={() => setShowAddSkill(!showAddSkill)} className="button button-purple">
+            <Plus size={16} />
+            Add Skill
+          </button>
+        </div>
+
+        {showAddSkill && (
+          <div className="add-skill-form">
+            <input
+              type="text"
+              value={newSkill}
+              onChange={(e) => setNewSkill(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && !saving && addSkill()}
+              placeholder="Enter new skill name..."
+              disabled={saving}
+              className="input"
+            />
+            <button onClick={addSkill} disabled={saving} className="button button-green">
+              {saving ? 'Adding...' : 'Add'}
+            </button>
+            <button
+              onClick={() => { setShowAddSkill(false); setNewSkill(''); }}
+              disabled={saving}
+              className="button button-gray"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        <div className="skills-grid">
+          {skills.map((skill, index) => (
+            <div key={index} className="skill-item">
+              <span>{skill}</span>
+              <button onClick={() => removeSkill(skill)} className="icon-button">
+                <X size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Drawing Warmup Component
+function DrawingWarmup({ skills }) {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Get state from URL or defaults
+  const [step, setStepState] = useState(searchParams.get('step') || 'setup');
+  const [duration, setDurationState] = useState(searchParams.get('duration') ? parseInt(searchParams.get('duration')) : null);
+  const [selectedSkills, setSelectedSkillsState] = useState(
+    searchParams.get('skills') ? searchParams.get('skills').split(',').filter(s => s) : []
+  );
+  const [currentImageIndex, setCurrentImageIndexState] = useState(
+    searchParams.get('imageIndex') ? parseInt(searchParams.get('imageIndex')) : 0
+  );
+  const [sessionPlan, setSessionPlan] = useState(null);
+  const [timeRemaining, setTimeRemaining] = useState(0);
+  const [isPaused, setIsPaused] = useState(searchParams.get('paused') === 'true');
+  const [sessionImages, setSessionImages] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [totalPausedTime, setTotalPausedTime] = useState(0);
+  const [pauseStartTime, setPauseStartTime] = useState(null);
+  const [sessionStartTime] = useState(Date.now());
+
+  // Wrapper functions that update both state and URL
+  const setStep = (newStep) => {
+    setStepState(newStep);
+    updateURL({ step: newStep });
+  };
+
+  const setDuration = (newDuration) => {
+    setDurationState(newDuration);
+    updateURL({ duration: newDuration });
+  };
+
+  const setSelectedSkills = (newSkills) => {
+    setSelectedSkillsState(newSkills);
+    updateURL({ skills: newSkills.join(',') });
+  };
+
+  const setCurrentImageIndex = (newIndex) => {
+    setCurrentImageIndexState(newIndex);
+    updateURL({ imageIndex: newIndex });
+  };
+
+  // Helper to update URL params
+  const updateURL = (updates) => {
+    const params = new URLSearchParams(searchParams);
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === null || value === undefined || value === '') {
+        params.delete(key);
+      } else {
+        params.set(key, value);
+      }
+    });
+    setSearchParams(params, { replace: true });
+  };
+
+  const durationOptions = [
+    { value: 5, label: '5 minutes', plan: [{ count: 10, duration: 30 }] },
+    { value: 10, label: '10 minutes', plan: [{ count: 15, duration: 30 }, { count: 5, duration: 60 }] },
+    { value: 30, label: '30 minutes', plan: [{ count: 10, duration: 30 }, { count: 5, duration: 60 }, { count: 3, duration: 300 }] },
+    { value: 60, label: '60 minutes', plan: [{ count: 10, duration: 30 }, { count: 5, duration: 60 }, { count: 5, duration: 300 }, { count: 2, duration: 600 }] }
+  ];
+
+  // Restore session from URL on mount
+  useEffect(() => {
+    const urlStep = searchParams.get('step');
+    const urlDuration = searchParams.get('duration');
+
+    // If we have a duration in URL, restore the session plan
+    if (urlDuration && !sessionPlan) {
+      const selected = durationOptions.find(opt => opt.value === parseInt(urlDuration));
+      if (selected) {
+        setSessionPlan(selected.plan);
+      }
+    }
+
+    // If step is 'session', we need to reload images
+    if (urlStep === 'session' && sessionImages.length === 0 && sessionPlan) {
+      const loadSessionImages = async () => {
+        setLoading(true);
+        try {
+          const totalCount = sessionPlan.reduce((sum, p) => sum + p.count, 0);
+          const response = await fetch(`${API_URL}/images/warmup-session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ count: totalCount, skills: selectedSkills })
+          });
+          const images = await response.json();
+          setSessionImages(images);
+
+          // Restore the timer for current image
+          if (sessionPlan && currentImageIndex < totalCount) {
+            let imagesSoFar = 0;
+            for (let plan of sessionPlan) {
+              if (currentImageIndex < imagesSoFar + plan.count) {
+                setTimeRemaining(plan.duration);
+                break;
+              }
+              imagesSoFar += plan.count;
+            }
+          }
+        } catch (error) {
+          console.error('Failed to restore session images:', error);
+        }
+        setLoading(false);
+      };
+      loadSessionImages();
+    }
+  }, [searchParams.get('step'), sessionPlan]);
+
+  const toggleSkill = (skill) => {
+    if (selectedSkills.includes(skill)) {
+      setSelectedSkills(selectedSkills.filter(s => s !== skill));
+    } else {
+      setSelectedSkills([...selectedSkills, skill]);
+    }
+  };
+
+  const confirmSetup = () => {
+    const selected = durationOptions.find(opt => opt.value === duration);
+    setSessionPlan(selected.plan);
+    setStep('confirm');
+  };
+
+  const startSession = async () => {
+    setLoading(true);
+    try {
+      const totalCount = sessionPlan.reduce((sum, p) => sum + p.count, 0);
+      const response = await fetch(`${API_URL}/images/warmup-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: totalCount, skills: selectedSkills })
+      });
+      const images = await response.json();
+      setSessionImages(images);
+      setStep('session');
+      setCurrentImageIndex(0);
+      setTimeRemaining(sessionPlan[0].duration);
+    } catch (error) {
+      console.error('Failed to load images:', error);
+      alert('Failed to load images. Make sure the backend is running.');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (step === 'session' && !isPaused && timeRemaining > 0) {
+      const timer = setTimeout(() => setTimeRemaining(timeRemaining - 1), 1000);
+      return () => clearTimeout(timer);
+    } else if (step === 'session' && timeRemaining === 0) {
+      const totalImages = sessionPlan.reduce((sum, p) => sum + p.count, 0);
+      if (currentImageIndex + 1 < totalImages) {
+        let imagesSoFar = 0;
+        for (let plan of sessionPlan) {
+          if (currentImageIndex < imagesSoFar + plan.count) {
+            setTimeRemaining(plan.duration);
+            break;
+          }
+          imagesSoFar += plan.count;
+        }
+        setCurrentImageIndex(currentImageIndex + 1);
+      } else {
+        setStep('complete');
+      }
+    }
+  }, [step, isPaused, timeRemaining, currentImageIndex, sessionPlan]);
+
+  useEffect(() => {
+    if (step === 'complete') {
+      const logSession = async () => {
+        try {
+          // Calculate actual practice time (excluding paused time)
+          const totalSessionTime = Date.now() - sessionStartTime;
+          let finalPausedTime = totalPausedTime;
+
+          // If currently paused when session ends, add that pause duration
+          if (pauseStartTime) {
+            finalPausedTime += Date.now() - pauseStartTime;
+          }
+
+          const actualPracticeTimeMs = totalSessionTime - finalPausedTime;
+          const actualPracticeMinutes = Math.round(actualPracticeTimeMs / 1000 / 60);
+
+          const totalImages = sessionPlan.reduce((sum, p) => sum + p.count, 0);
+          await fetch(`${API_URL}/sessions/log`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'warmup',
+              duration: actualPracticeMinutes, // Use actual practice time, not planned duration
+              skills: selectedSkills,
+              imageCount: totalImages,
+              completedAt: new Date().toISOString()
+            })
+          });
+        } catch (error) {
+          console.error('Failed to log session:', error);
+        }
+      };
+      logSession();
+    }
+  }, [step]);
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  if (step === 'setup') {
+    return (
+      <div className="container">
+        <button onClick={() => navigate('/')} className="back-button">
+          <ChevronLeft size={20} />
+          Back to Dashboard
+        </button>
+
+        <div className="card">
+          <h2>Drawing Warmup Setup</h2>
+
+          <div className="section">
+            <h3 className="section-title">Select Duration</h3>
+            <div className="duration-grid">
+              {durationOptions.map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setDuration(opt.value)}
+                  className={`duration-option ${duration === opt.value ? 'selected' : ''}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="section">
+            <h3 className="section-title">Focus Skills (Optional)</h3>
+            <p className="section-subtitle">Select skills to filter reference images</p>
+            <div className="skills-filter-grid">
+              {skills.map(skill => (
+                <button
+                  key={skill}
+                  onClick={() => toggleSkill(skill)}
+                  className={`skill-filter-button ${selectedSkills.includes(skill) ? 'selected' : ''}`}
+                >
+                  {skill}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            onClick={confirmSetup}
+            disabled={!duration}
+            className="button button-blue full-width"
+          >
+            Continue
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'confirm') {
+    const totalImages = sessionPlan.reduce((sum, p) => sum + p.count, 0);
+    return (
+      <div className="container">
+        <button onClick={() => setStep('setup')} className="back-button">
+          <ChevronLeft size={20} />
+          Back
+        </button>
+
+        <div className="card">
+          <h2>Confirm Your Session</h2>
+
+          <div className="session-plan-box">
+            <h3 className="section-title">Session Plan:</h3>
+            <ul className="session-plan-list">
+              {sessionPlan.map((plan, idx) => (
+                <li key={idx}>
+                  <span className="plan-count">{plan.count}×</span>
+                  <span>{formatTime(plan.duration)} each</span>
+                </li>
+              ))}
+            </ul>
+            <div className="session-totals">
+              <p><span className="label">Total images:</span> <strong>{totalImages}</strong></p>
+              <p><span className="label">Total time:</span> <strong>{duration} minutes</strong></p>
+            </div>
+          </div>
+
+          {selectedSkills.length > 0 && (
+            <div className="selected-skills-box">
+              <h3>Focusing on:</h3>
+              <div className="skill-tags">
+                {selectedSkills.map(skill => (
+                  <span key={skill} className="skill-tag">{skill}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="button-group">
+            <button onClick={() => setStep('setup')} disabled={loading} className="button button-gray">
+              Modify
+            </button>
+            <button onClick={startSession} disabled={loading} className="button button-green">
+              {loading ? 'Loading Images...' : 'Start Session'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'session') {
+    const totalImages = sessionPlan.reduce((sum, p) => sum + p.count, 0);
+    const progress = ((currentImageIndex + 1) / totalImages) * 100;
+    const currentImage = sessionImages[currentImageIndex];
+
+    return (
+      <div className="session-screen">
+        <div className="session-header">
+          <div className="session-controls">
+            <button onClick={() => {
+              const newPausedState = !isPaused;
+              if (newPausedState) {
+                // Starting pause
+                setPauseStartTime(Date.now());
+              } else {
+                // Ending pause
+                if (pauseStartTime) {
+                  const pauseDuration = Date.now() - pauseStartTime;
+                  setTotalPausedTime(totalPausedTime + pauseDuration);
+                  setPauseStartTime(null);
+                }
+              }
+              setIsPaused(newPausedState);
+              updateURL({ paused: newPausedState });
+            }} className="control-button">
+              {isPaused ? <Play size={20} /> : <Pause size={20} />}
+            </button>
+            <span className="timer">{formatTime(timeRemaining)}</span>
+          </div>
+          <div className="session-info">
+            <span>Image {currentImageIndex + 1} of {totalImages}</span>
+            <button onClick={() => setStep('complete')} className="button button-red">
+              End Session
+            </button>
+          </div>
+        </div>
+
+        <div className="session-content">
+          {currentImage ? (
+            <div className="reference-image-container">
+              <img
+                src={`${API_URL}/images/file?path=${encodeURIComponent(currentImage.path)}`}
+                alt="Reference"
+                className={`reference-image ${isPaused ? 'paused' : ''}`}
+              />
+              {isPaused && (
+                <div className="pause-overlay">
+                  <Pause size={64} />
+                  <p>Session Paused</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="image-placeholder">
+              <Image size={64} />
+            </div>
+          )}
+        </div>
+
+        <div className="session-progress-bar">
+          <div className="progress-fill" style={{ width: `${progress}%` }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'complete') {
+    const totalImages = sessionPlan.reduce((sum, p) => sum + p.count, 0);
+    return (
+      <div className="container">
+        <div className="card completion-card">
+          <h2 className="completion-title">Session Complete!</h2>
+          <p className="completion-text">
+            You practiced with {totalImages} reference images over {duration} minutes
+          </p>
+          {selectedSkills.length > 0 && (
+            <div className="completion-skills">
+              <p className="label">Skills practiced:</p>
+              <div className="skill-tags">
+                {selectedSkills.map(skill => (
+                  <span key={skill} className="skill-tag">{skill}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="button-group">
+            <button
+              onClick={() => {
+                setStepState('setup');
+                setDurationState(null);
+                setSelectedSkillsState([]);
+                setSessionPlan(null);
+                setSessionImages([]);
+                setCurrentImageIndexState(0);
+                // Clear all URL params
+                setSearchParams({}, { replace: true });
+              }}
+              className="button button-blue"
+            >
+              Start Another Session
+            </button>
+            <button onClick={() => navigate('/')} className="button button-gray">
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+}
+
+// Critique Tool Component
+function CritiqueTool({ skills }) {
+  const navigate = useNavigate();
+  const [drawings, setDrawings] = useState([]);
+  const [selectedDrawing, setSelectedDrawing] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [generatingCritique, setGeneratingCritique] = useState(false);
+  const [comment, setComment] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [artMovements, setArtMovements] = useState([]);
+  const [movementGuidance, setMovementGuidance] = useState(null);
+  const [loadingMovement, setLoadingMovement] = useState(false);
+
+  useEffect(() => {
+    loadDrawings();
+    loadArtMovements();
+  }, []);
+
+  const loadDrawings = async () => {
+    try {
+      const response = await fetch(`${API_URL}/drawings`);
+      const data = await response.json();
+      setDrawings(data);
+    } catch (error) {
+      console.error('Failed to load drawings:', error);
+    }
+  };
+
+  const loadArtMovements = async () => {
+    try {
+      const response = await fetch(`${API_URL}/art-movements`);
+      const data = await response.json();
+      setArtMovements(data);
+    } catch (error) {
+      console.error('Failed to load art movements:', error);
+    }
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    if (comment) {
+      formData.append('comment', comment);
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/drawings/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      if (data.success) {
+        await loadDrawings();
+        setComment('');
+        setSelectedDrawing(data.drawing);
+      }
+    } catch (error) {
+      console.error('Failed to upload drawing:', error);
+      alert('Failed to upload drawing. Please try again.');
+    }
+    setUploading(false);
+  };
+
+  const generateCritique = async (drawingId) => {
+    setGeneratingCritique(true);
+    try {
+      const response = await fetch(`${API_URL}/critiques/ai`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ drawingId })
+      });
+      const data = await response.json();
+      if (data.success) {
+        await loadDrawings();
+        const updated = drawings.find(d => d.id === drawingId);
+        if (updated) {
+          setSelectedDrawing({...updated, critique: data.critique});
+        }
+      }
+    } catch (error) {
+      console.error('Failed to generate critique:', error);
+      alert('Failed to generate critique. Please try again.');
+    }
+    setGeneratingCritique(false);
+  };
+
+  const updateComment = async (drawingId, newComment) => {
+    try {
+      const response = await fetch(`${API_URL}/drawings/${drawingId}/comment`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ comment: newComment })
+      });
+      const data = await response.json();
+      if (data.success) {
+        await loadDrawings();
+      }
+    } catch (error) {
+      console.error('Failed to update comment:', error);
+    }
+  };
+
+  const deleteDrawing = async (drawingId) => {
+    if (!window.confirm('Are you sure you want to delete this drawing?')) return;
+
+    try {
+      await fetch(`${API_URL}/drawings/${drawingId}`, { method: 'DELETE' });
+      await loadDrawings();
+      if (selectedDrawing?.id === drawingId) {
+        setSelectedDrawing(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete drawing:', error);
+    }
+  };
+
+  const compareToMovement = async (movementName) => {
+    if (!selectedDrawing) return;
+
+    setLoadingMovement(true);
+    setMovementGuidance(null);
+
+    try {
+      const response = await fetch(`${API_URL}/art-movements/compare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          drawingId: selectedDrawing.id,
+          movementName: movementName
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setMovementGuidance(data);
+      }
+    } catch (error) {
+      console.error('Failed to compare to movement:', error);
+      alert('Failed to generate movement comparison. Please try again.');
+    }
+    setLoadingMovement(false);
+  };
+
+  const filteredDrawings = drawings.filter(d =>
+    d.originalName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    d.comment.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <div className="container container-wide">
+      <button onClick={() => navigate('/')} className="back-button">
+        <ChevronLeft size={20} />
+        Back to Dashboard
+      </button>
+
+      <h2>AI Art Critique</h2>
+      <p className="subtitle">Upload your artwork for AI-powered critique using Feldman's four-step method</p>
+
+      <div className="critique-layout">
+        <div className="critique-sidebar">
+          <div className="card">
+            <h3>Upload New Drawing</h3>
+            <label className="upload-area-small">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                className="file-input"
+                disabled={uploading}
+              />
+              <Upload size={32} />
+              <p className="upload-text-small">{uploading ? 'Uploading...' : 'Choose image'}</p>
+            </label>
+
+            <div className="form-group">
+              <label className="form-label">Comment/Notes (optional)</label>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Add notes about this drawing..."
+                className="textarea"
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <div className="card">
+            <h3>Your Drawings ({drawings.length})</h3>
+            <input
+              type="text"
+              placeholder="Search drawings..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="input"
+            />
+
+            <div className="drawings-list">
+              {filteredDrawings.map(drawing => (
+                <div
+                  key={drawing.id}
+                  className={`drawing-item ${selectedDrawing?.id === drawing.id ? 'selected' : ''}`}
+                  onClick={() => setSelectedDrawing(drawing)}
+                >
+                  <img
+                    src={`${API_URL}/drawings/${drawing.id}/file`}
+                    alt={drawing.originalName}
+                    className="drawing-thumbnail"
+                  />
+                  <div className="drawing-info">
+                    <p className="drawing-name">{drawing.originalName}</p>
+                    <p className="drawing-date">{new Date(drawing.uploadedAt).toLocaleDateString()}</p>
+                    {drawing.critique && <span className="critique-badge">✓ Critiqued</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="critique-main">
+          {selectedDrawing ? (
+            <div className="card">
+              <div className="drawing-header">
+                <div>
+                  <h3>{selectedDrawing.originalName}</h3>
+                  <p className="drawing-meta">
+                    Uploaded {new Date(selectedDrawing.uploadedAt).toLocaleString()}
+                  </p>
+                </div>
+                <button
+                  onClick={() => deleteDrawing(selectedDrawing.id)}
+                  className="button-icon button-danger"
+                  title="Delete drawing"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="drawing-display">
+                <img
+                  src={`${API_URL}/drawings/${selectedDrawing.id}/file`}
+                  alt={selectedDrawing.originalName}
+                  className="drawing-full"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Your Notes</label>
+                <textarea
+                  value={selectedDrawing.comment}
+                  onChange={(e) => updateComment(selectedDrawing.id, e.target.value)}
+                  placeholder="Add your notes and observations..."
+                  className="textarea"
+                  rows={3}
+                />
+              </div>
+
+              {!selectedDrawing.critique ? (
+                <button
+                  onClick={() => generateCritique(selectedDrawing.id)}
+                  disabled={generatingCritique}
+                  className="button button-purple full-width"
+                >
+                  {generatingCritique ? 'Generating Critique...' : 'Generate AI Critique'}
+                </button>
+              ) : (
+                <div className="critique-results">
+                  <h3>AI Critique Results</h3>
+                  <p className="critique-subtitle">Comprehensive AI-powered art analysis using computer vision</p>
+
+                  <div className="critique-section critique-section-description">
+                    <h4>Description</h4>
+                    <div className="critique-text">
+                      <ReactMarkdown>{selectedDrawing.critique.description}</ReactMarkdown>
+                    </div>
+                  </div>
+
+                  <div className="critique-section critique-section-composition">
+                    <h4>Composition Analysis</h4>
+                    <div className="critique-text">
+                      <ReactMarkdown>{selectedDrawing.critique.composition}</ReactMarkdown>
+                    </div>
+                  </div>
+
+                  <div className="critique-section critique-section-mood">
+                    <h4>Mood & Atmosphere</h4>
+                    <div className="critique-text">
+                      <ReactMarkdown>{selectedDrawing.critique.mood}</ReactMarkdown>
+                    </div>
+                  </div>
+
+                  <div className="critique-section critique-section-analysis">
+                    <h4>Design Elements Analysis</h4>
+                    <div className="critique-text">
+                      <ReactMarkdown>{selectedDrawing.critique.analysis}</ReactMarkdown>
+                    </div>
+                  </div>
+
+                  <div className="critique-section critique-section-interpretation">
+                    <h4>Interpretation</h4>
+                    <div className="critique-text">
+                      <ReactMarkdown>{selectedDrawing.critique.interpretation}</ReactMarkdown>
+                    </div>
+                  </div>
+
+                  <div className="critique-section critique-section-judgment">
+                    <h4>Evaluation & Recommendations</h4>
+                    <div className="critique-text">
+                      <ReactMarkdown>{selectedDrawing.critique.judgment}</ReactMarkdown>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => generateCritique(selectedDrawing.id)}
+                    disabled={generatingCritique}
+                    className="button button-outline full-width"
+                  >
+                    Regenerate Critique
+                  </button>
+
+                  <div className="movement-comparison-section">
+                    <h3>Compare to Art Movements</h3>
+                    <p className="movement-subtitle">Select a movement to get guidance on how to align your work with that aesthetic</p>
+
+                    <div className="movement-buttons">
+                      {artMovements.map(movement => (
+                        <button
+                          key={movement.name}
+                          onClick={() => compareToMovement(movement.name)}
+                          disabled={loadingMovement}
+                          className="movement-button"
+                          title={movement.description}
+                        >
+                          {movement.name}
+                        </button>
+                      ))}
+                    </div>
+
+                    {movementGuidance && (
+                      <div className="movement-guidance">
+                        <button
+                          onClick={() => setMovementGuidance(null)}
+                          className="movement-close"
+                          title="Close guidance"
+                        >
+                          <X size={20} />
+                        </button>
+                        <h4>{movementGuidance.movement} Guidance</h4>
+                        <div className="movement-guidance-text">
+                          <ReactMarkdown>{movementGuidance.guidance}</ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="card empty-state">
+              <Upload size={64} className="empty-icon" />
+              <h3>No Drawing Selected</h3>
+              <p>Upload a new drawing or select one from your collection to view and critique</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Photo Finder Component
+function PhotoFinder({ skills }) {
+  const navigate = useNavigate();
+  const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [photoMetadata, setPhotoMetadata] = useState({});
+  const [selectedMediums, setSelectedMediums] = useState([]);
+  const [indexStatus, setIndexStatus] = useState(null);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Album importer states
+  const [showAlbumImporter, setShowAlbumImporter] = useState(false);
+  const [albumImportStep, setAlbumImportStep] = useState('category'); // 'category', 'albums', 'preview', 'syncing'
+  const [albumCategory, setAlbumCategory] = useState(null); // 'reference', 'artwork', 'warmup'
+  const [albums, setAlbums] = useState([]);
+  const [selectedAlbum, setSelectedAlbum] = useState(null);
+  const [albumPhotos, setAlbumPhotos] = useState([]);
+  const [syncProgress, setSyncProgress] = useState(null);
+
+  // Filter states
+  const [filters, setFilters] = useState({
+    subjectType: 'All',
+    gender: 'All',
+    lighting: 'All',
+    status: 'All',
+    skill: 'All Skills'
+  });
+
+  // Seeded random number generator (for day-based consistency)
+  const seededRandom = (seed) => {
+    const x = Math.sin(seed++) * 10000;
+    return x - Math.floor(x);
+  };
+
+  const getDaySeed = () => {
+    const today = new Date();
+    return today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  };
+
+  const shuffleArrayWithSeed = (array, seed) => {
+    const shuffled = [...array];
+    let currentSeed = seed;
+
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(seededRandom(currentSeed) * (i + 1));
+      currentSeed++;
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    return shuffled;
+  };
+
+  const checkIndexStatus = async () => {
+    try {
+      const response = await fetch(`${API_URL}/images/index-status`);
+      const data = await response.json();
+      setIndexStatus(data);
+    } catch (error) {
+      console.error('Failed to check index status:', error);
+    }
+  };
+
+  const buildSearchQuery = () => {
+    let parts = [];
+
+    // Add search query
+    if (searchQuery.trim()) {
+      parts.push(searchQuery.trim());
+    }
+
+    // Add filters to query
+    if (filters.subjectType !== 'All') {
+      parts.push(filters.subjectType.toLowerCase());
+    }
+    if (filters.gender !== 'All') {
+      parts.push(filters.gender.toLowerCase());
+    }
+    if (filters.lighting !== 'All') {
+      parts.push(filters.lighting.toLowerCase() + ' lighting');
+    }
+    if (filters.skill !== 'All Skills') {
+      parts.push('good for practicing ' + filters.skill.toLowerCase());
+    }
+
+    return parts.join(', ');
+  };
+
+  const loadPhotos = async (useSearch = false) => {
+    setLoading(true);
+    setIsSearching(useSearch);
+
+    try {
+      const metadataResponse = await fetch(`${API_URL}/metadata`);
+      const metadataData = await metadataResponse.json();
+      setPhotoMetadata(metadataData.images || {});
+
+      let photosData;
+
+      // Use AI search if query or filters are active
+      const hasQuery = searchQuery.trim() ||
+                       filters.subjectType !== 'All' ||
+                       filters.gender !== 'All' ||
+                       filters.lighting !== 'All' ||
+                       filters.skill !== 'All Skills';
+
+      if (useSearch && hasQuery) {
+        const query = buildSearchQuery();
+        console.log('Searching with query:', query);
+
+        const searchResponse = await fetch(`${API_URL}/images/search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: query,
+            filters: filters,
+            max_results: 100
+          })
+        });
+
+        const searchData = await searchResponse.json();
+        photosData = searchData.results || [];
+      } else {
+        // Load all photos
+        const photosResponse = await fetch(`${API_URL}/images/photos`);
+        photosData = await photosResponse.json();
+
+        // Shuffle photos based on today's date (same order all day)
+        const seed = getDaySeed();
+        photosData = shuffleArrayWithSeed(photosData, seed);
+      }
+
+      // Apply status filter client-side
+      if (filters.status !== 'All') {
+        photosData = photosData.filter(photo => {
+          const metadata = metadataData.images?.[photo.path];
+          if (filters.status === 'Already Drawn') {
+            return metadata?.drawn === true;
+          } else if (filters.status === 'Not Drawn') {
+            return !metadata?.drawn;
+          }
+          return true;
+        });
+      }
+
+      setPhotos(photosData);
+    } catch (error) {
+      console.error('Failed to load photos:', error);
+    }
+    setLoading(false);
+    setIsSearching(false);
+  };
+
+  const toggleMedium = (medium) => {
+    if (selectedMediums.includes(medium)) {
+      setSelectedMediums(selectedMediums.filter(m => m !== medium));
+    } else {
+      setSelectedMediums([...selectedMediums, medium]);
+    }
+  };
+
+  const markAsDrawn = async () => {
+    if (!selectedPhoto) return;
+
+    const newMetadata = {
+      drawn: true,
+      mediums: selectedMediums,
+      drawnAt: new Date().toISOString()
+    };
+
+    try {
+      await fetch(`${API_URL}/metadata/image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imagePath: selectedPhoto.path,
+          metadata: newMetadata
+        })
+      });
+
+      // Update local state
+      setPhotoMetadata({
+        ...photoMetadata,
+        [selectedPhoto.path]: {
+          ...photoMetadata[selectedPhoto.path],
+          ...newMetadata
+        }
+      });
+
+      setSelectedPhoto(null);
+      setSelectedMediums([]);
+    } catch (error) {
+      console.error('Failed to mark as drawn:', error);
+      alert('Failed to save. Please try again.');
+    }
+  };
+
+  const markAsNotDrawn = async () => {
+    if (!selectedPhoto) return;
+
+    try {
+      await fetch(`${API_URL}/metadata/image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imagePath: selectedPhoto.path,
+          metadata: { drawn: false, mediums: [], drawnAt: null }
+        })
+      });
+
+      // Update local state
+      setPhotoMetadata({
+        ...photoMetadata,
+        [selectedPhoto.path]: {
+          ...photoMetadata[selectedPhoto.path],
+          drawn: false,
+          mediums: [],
+          drawnAt: null
+        }
+      });
+
+      setSelectedPhoto(null);
+      setSelectedMediums([]);
+    } catch (error) {
+      console.error('Failed to mark as not drawn:', error);
+      alert('Failed to save. Please try again.');
+    }
+  };
+
+  const openPhotoModal = (photo) => {
+    setSelectedPhoto(photo);
+    const metadata = photoMetadata[photo.path];
+    setSelectedMediums(metadata?.mediums || []);
+  };
+
+  // Album Importer Functions
+  const startAlbumImport = () => {
+    setShowAlbumImporter(true);
+    setAlbumImportStep('category');
+  };
+
+  const selectCategory = async (category) => {
+    setAlbumCategory(category);
+    setAlbumImportStep('albums');
+
+    // Fetch albums from Google Photos
+    try {
+      const response = await fetch(`${API_URL}/google-photos/albums`);
+      if (response.ok) {
+        const data = await response.json();
+        setAlbums(data.albums || []);
+      } else {
+        alert('Failed to load albums. Please make sure you\'re authorized.');
+      }
+    } catch (error) {
+      console.error('Error loading albums:', error);
+      alert('Failed to load albums');
+    }
+  };
+
+  const selectAlbumForPreview = async (album) => {
+    setSelectedAlbum(album);
+    setAlbumImportStep('preview');
+
+    // Fetch photos from the album
+    try {
+      const response = await fetch(`${API_URL}/google-photos/albums/${album.id}/photos`);
+      if (response.ok) {
+        const data = await response.json();
+        setAlbumPhotos(data.photos || []);
+      } else {
+        alert('Failed to load album photos.');
+      }
+    } catch (error) {
+      console.error('Error loading album photos:', error);
+      alert('Failed to load album photos');
+    }
+  };
+
+  const startAlbumSync = async () => {
+    if (!selectedAlbum) return;
+
+    setAlbumImportStep('syncing');
+    setSyncProgress({ total: 0, current: 0, status: 'Starting sync...' });
+
+    try {
+      const response = await fetch(`${API_URL}/google-photos/sync-album`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          albumId: selectedAlbum.id,
+          albumTitle: selectedAlbum.title,
+          category: albumCategory
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSyncProgress({
+          total: data.total,
+          current: data.synced,
+          status: 'Sync complete!'
+        });
+
+        // Reset after 2 seconds
+        setTimeout(() => {
+          setShowAlbumImporter(false);
+          setAlbumImportStep('category');
+          setSyncProgress(null);
+          setSelectedAlbum(null);
+          setAlbums([]);
+          loadPhotos(); // Reload photos to show newly synced ones
+        }, 2000);
+      } else {
+        alert('Failed to sync album');
+        setAlbumImportStep('preview');
+      }
+    } catch (error) {
+      console.error('Error syncing album:', error);
+      alert('Failed to sync album');
+      setAlbumImportStep('preview');
+    }
+  };
+
+  const closeAlbumImporter = () => {
+    setShowAlbumImporter(false);
+    setAlbumImportStep('category');
+    setSyncProgress(null);
+    setSelectedAlbum(null);
+    setAlbums([]);
+  };
+
+  useEffect(() => {
+    loadPhotos();
+    checkIndexStatus();
+  }, []);
+
+  return (
+    <div className="container container-wide">
+      <button onClick={() => navigate('/')} className="back-button">
+        <ChevronLeft size={20} />
+        Back to Dashboard
+      </button>
+
+      <div className="card">
+        <h2>Photo Finder</h2>
+
+        {showAlbumImporter && (
+          <div className="modal-overlay">
+            <div className="modal">
+              <button
+                onClick={closeAlbumImporter}
+                className="modal-close"
+              >
+                <X size={24} />
+              </button>
+
+              {albumImportStep === 'category' && (
+                <div className="album-importer">
+                  <h3>Import from Google Photos</h3>
+                  <p className="section-subtitle">What do you want to import?</p>
+
+                  <div className="category-buttons">
+                    <button
+                      onClick={() => selectCategory('reference')}
+                      className="category-btn"
+                    >
+                      <Image size={32} />
+                      <span>Add a Reference Album</span>
+                      <p>Reference images for studies</p>
+                    </button>
+                    <button
+                      onClick={() => selectCategory('artwork')}
+                      className="category-btn"
+                    >
+                      <Upload size={32} />
+                      <span>Add an Artwork Album</span>
+                      <p>Your own artwork pieces</p>
+                    </button>
+                    <button
+                      onClick={() => selectCategory('warmup')}
+                      className="category-btn"
+                    >
+                      <Clock size={32} />
+                      <span>Add Warmup Images</span>
+                      <p>Quick sketches and warmups</p>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {albumImportStep === 'albums' && (
+                <div className="album-importer">
+                  <h3>Select an Album</h3>
+                  <p className="section-subtitle">Choose which album to import</p>
+
+                  {albums.length === 0 ? (
+                    <p className="text-center">No albums found</p>
+                  ) : (
+                    <div className="albums-list">
+                      {albums.map((album) => (
+                        <button
+                          key={album.id}
+                          onClick={() => selectAlbumForPreview(album)}
+                          className="album-item"
+                        >
+                          <div className="album-info">
+                            <h4>{album.title}</h4>
+                            <p>{album.mediaItemsCount || 0} photos</p>
+                          </div>
+                          <ChevronLeft size={20} style={{ transform: 'rotate(180deg)' }} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {albumImportStep === 'preview' && selectedAlbum && (
+                <div className="album-importer">
+                  <h3>Preview: {selectedAlbum.title}</h3>
+                  <p className="section-subtitle">{albumPhotos.length} photos will be imported</p>
+
+                  {albumPhotos.length > 0 && (
+                    <div className="preview-grid">
+                      {albumPhotos.slice(0, 9).map((photo, idx) => (
+                        <div key={idx} className="preview-thumbnail">
+                          {photo.baseUrl && (
+                            <img
+                              src={photo.baseUrl + '=w150-h150'}
+                              alt={`Preview ${idx}`}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px' }}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="button-group">
+                    <button
+                      onClick={() => setAlbumImportStep('albums')}
+                      className="button button-secondary"
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={startAlbumSync}
+                      className="button button-primary"
+                    >
+                      Sync This Album
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {albumImportStep === 'syncing' && syncProgress && (
+                <div className="album-importer">
+                  <h3>Syncing...</h3>
+                  <div className="sync-progress">
+                    <div className="spinner"></div>
+                    <p>{syncProgress.status}</p>
+                    {syncProgress.total > 0 && (
+                      <p className="progress-text">
+                        {syncProgress.current} / {syncProgress.total} photos synced
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <button
+          onClick={startAlbumImport}
+          className="button button-primary"
+          style={{ marginBottom: '1.5rem' }}
+        >
+          <Download size={20} style={{ marginRight: '0.5rem' }} />
+          Import from Google Photos
+        </button>
+
+        {indexStatus && !indexStatus.indexed && (
+          <div className="alert alert-info">
+            <p>⚡ AI search is not yet configured. Building image index for the first time...</p>
+            <button
+              onClick={async () => {
+                const response = await fetch(`${API_URL}/images/rebuild-index`, { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                  checkIndexStatus();
+                  alert('Index built successfully! You can now use AI search.');
+                }
+              }}
+              className="button button-small"
+            >
+              Build Index Now
+            </button>
+          </div>
+        )}
+
+        <div className="search-section">
+          <input
+            type="text"
+            placeholder="Search for photos using AI (e.g., 'person jumping', 'sunset over water')..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && loadPhotos(true)}
+            className="input search-input"
+          />
+          <button
+            onClick={() => loadPhotos(true)}
+            disabled={isSearching}
+            className="button button-primary search-button"
+          >
+            {isSearching ? 'Searching...' : 'AI Search'}
+          </button>
+        </div>
+
+        <div className="filters-grid">
+          <div className="filter-group">
+            <label className="filter-label">Subject Type</label>
+            <select
+              className="select-input"
+              value={filters.subjectType}
+              onChange={(e) => setFilters({...filters, subjectType: e.target.value})}
+            >
+              <option>All</option>
+              <option>People</option>
+              <option>Animals</option>
+              <option>Buildings</option>
+              <option>Landscapes</option>
+            </select>
+          </div>
+          <div className="filter-group">
+            <label className="filter-label">Gender</label>
+            <select
+              className="select-input"
+              value={filters.gender}
+              onChange={(e) => setFilters({...filters, gender: e.target.value})}
+            >
+              <option>All</option>
+              <option>Male</option>
+              <option>Female</option>
+            </select>
+          </div>
+          <div className="filter-group">
+            <label className="filter-label">Lighting</label>
+            <select
+              className="select-input"
+              value={filters.lighting}
+              onChange={(e) => setFilters({...filters, lighting: e.target.value})}
+            >
+              <option>All</option>
+              <option>High Contrast</option>
+              <option>Bright</option>
+              <option>Dark</option>
+              <option>Colorful</option>
+            </select>
+          </div>
+          <div className="filter-group">
+            <label className="filter-label">Status</label>
+            <select
+              className="select-input"
+              value={filters.status}
+              onChange={(e) => setFilters({...filters, status: e.target.value})}
+            >
+              <option>All</option>
+              <option>Not Drawn</option>
+              <option>Already Drawn</option>
+            </select>
+          </div>
+          <div className="filter-group">
+            <label className="filter-label">Skills</label>
+            <select
+              className="select-input"
+              value={filters.skill}
+              onChange={(e) => setFilters({...filters, skill: e.target.value})}
+            >
+              <option>All Skills</option>
+              {skills.map(skill => (
+                <option key={skill}>{skill}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="search-actions">
+          <button
+            onClick={() => {
+              setSearchQuery('');
+              setFilters({
+                subjectType: 'All',
+                gender: 'All',
+                lighting: 'All',
+                status: 'All',
+                skill: 'All Skills'
+              });
+              loadPhotos(false);
+            }}
+            className="button button-secondary"
+          >
+            Clear Filters
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="loading-state">
+            <div className="spinner"></div>
+            <p>Loading photos...</p>
+          </div>
+        ) : photos.length > 0 ? (
+          <div>
+            <p className="photo-count">Found {photos.length} photos</p>
+            <div className="photo-grid">
+              {photos.slice(0, 20).map((photo, idx) => {
+                const metadata = photoMetadata[photo.path];
+                const isDrawn = metadata?.drawn === true;
+
+                return (
+                  <div
+                    key={idx}
+                    className={`photo-card ${isDrawn ? 'photo-drawn' : ''}`}
+                    onClick={() => openPhotoModal(photo)}
+                  >
+                    <img
+                      src={`${API_URL}/images/file?path=${encodeURIComponent(photo.path)}`}
+                      alt={photo.name}
+                      className="photo-thumbnail"
+                    />
+                    {isDrawn && (
+                      <div className="photo-drawn-badge">
+                        ✓ Drawn
+                      </div>
+                    )}
+                    <div className="photo-info">
+                      <p className="photo-name">{photo.name}</p>
+                      {metadata?.mediums && metadata.mediums.length > 0 && (
+                        <p className="photo-mediums">{metadata.mediums.join(', ')}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <Camera size={64} />
+            <p>No photos found</p>
+            <p className="empty-subtext">Check that your photos directory is configured correctly</p>
+          </div>
+        )}
+      </div>
+
+      {/* Photo Modal */}
+      {selectedPhoto && (
+        <div className="modal-overlay" onClick={() => setSelectedPhoto(null)}>
+          <div className="modal-content photo-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setSelectedPhoto(null)}>
+              <X size={24} />
+            </button>
+
+            <div className="modal-body">
+              <div className="modal-image-container">
+                <img
+                  src={`${API_URL}/images/file?path=${encodeURIComponent(selectedPhoto.path)}`}
+                  alt={selectedPhoto.name}
+                  className="modal-image"
+                />
+              </div>
+
+              <div className="modal-sidebar">
+                <h3>{selectedPhoto.name}</h3>
+
+                {photoMetadata[selectedPhoto.path]?.drawn ? (
+                  <div>
+                    <div className="drawn-status">
+                      <span className="status-badge status-badge-green">✓ Drawn</span>
+                      {photoMetadata[selectedPhoto.path]?.drawnAt && (
+                        <p className="status-date">
+                          {new Date(photoMetadata[selectedPhoto.path].drawnAt).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+
+                    {photoMetadata[selectedPhoto.path]?.mediums && photoMetadata[selectedPhoto.path].mediums.length > 0 && (
+                      <div className="mediums-display">
+                        <h4>Mediums Used:</h4>
+                        <div className="medium-tags">
+                          {photoMetadata[selectedPhoto.path].mediums.map(medium => (
+                            <span key={medium} className="medium-tag">{medium}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <button onClick={markAsNotDrawn} className="button button-gray full-width">
+                      Mark as Not Drawn
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <h4>Mark as Drawn</h4>
+                    <p className="section-subtitle">Select medium(s) used:</p>
+
+                    <div className="medium-checkboxes">
+                      {['Pen and Ink', 'Pencil', 'Watercolor', 'Print'].map(medium => (
+                        <label key={medium} className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={selectedMediums.includes(medium)}
+                            onChange={() => toggleMedium(medium)}
+                          />
+                          {medium}
+                        </label>
+                      ))}
+                    </div>
+
+                    <button
+                      onClick={markAsDrawn}
+                      disabled={selectedMediums.length === 0}
+                      className="button button-green full-width"
+                    >
+                      Mark as Drawn
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Video Extractor Component
+function VideoExtractor() {
+  const navigate = useNavigate();
+  const [videoPath, setVideoPath] = useState('');
+  const [extractLighting, setExtractLighting] = useState(true);
+  const [extractComposition, setExtractComposition] = useState(true);
+  const [extractAction, setExtractAction] = useState(true);
+
+  return (
+    <div className="container">
+      <button onClick={() => navigate('/')} className="back-button">
+        <ChevronLeft size={20} />
+        Back to Dashboard
+      </button>
+
+      <div className="card">
+        <h2>Video Frame Extractor</h2>
+
+        <div className="form-group">
+          <label className="form-label">Video File Path</label>
+          <input
+            type="text"
+            placeholder="Enter path to video file..."
+            value={videoPath}
+            onChange={(e) => setVideoPath(e.target.value)}
+            className="input"
+          />
+        </div>
+
+        <div className="settings-box">
+          <h3>Extraction Settings</h3>
+          <div className="checkbox-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={extractLighting}
+                onChange={(e) => setExtractLighting(e.target.checked)}
+              />
+              Extract frames with dramatic lighting
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={extractComposition}
+                onChange={(e) => setExtractComposition(e.target.checked)}
+              />
+              Extract frames with strong composition
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={extractAction}
+                onChange={(e) => setExtractAction(e.target.checked)}
+              />
+              Extract peak action/emotion moments
+            </label>
+          </div>
+        </div>
+
+        <button disabled={!videoPath} className="button button-red full-width">
+          Analyze Video & Extract Frames
+        </button>
+
+        <div className="info-text">
+          <p>Extracted frames will be saved to your reference collection</p>
+          <p className="info-subtext">Note: This feature requires additional video processing setup</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Progress Analytics Component
+function ProgressAnalytics({ skills }) {
+  const navigate = useNavigate();
+  const [practiceStats, setPracticeStats] = useState(null);
+  const [artworkStats, setArtworkStats] = useState(null);
+  const [selectedSkill, setSelectedSkill] = useState(null);
+  const [skillProgress, setSkillProgress] = useState(null);
+  const [period, setPeriod] = useState('month');
+  const [loading, setLoading] = useState(true);
+  const [showSessionManager, setShowSessionManager] = useState(false);
+  const [allSessions, setAllSessions] = useState([]);
+
+  useEffect(() => {
+    loadStats();
+  }, [period]);
+
+  useEffect(() => {
+    if (selectedSkill) {
+      loadSkillProgress(selectedSkill);
+    }
+  }, [selectedSkill]);
+
+  const loadStats = async () => {
+    setLoading(true);
+    try {
+      const [practiceRes, artworkRes] = await Promise.all([
+        fetch(`${API_URL}/stats/practice?period=${period}`),
+        fetch(`${API_URL}/stats/artwork`)
+      ]);
+      
+      const practiceData = await practiceRes.json();
+      const artworkData = await artworkRes.json();
+      
+      setPracticeStats(practiceData);
+      setArtworkStats(artworkData);
+    } catch (error) {
+      console.error('Failed to load stats:', error);
+    }
+    setLoading(false);
+  };
+
+  const loadSkillProgress = async (skill) => {
+    try {
+      const response = await fetch(`${API_URL}/stats/skill-progress/${encodeURIComponent(skill)}`);
+      const data = await response.json();
+      setSkillProgress(data);
+    } catch (error) {
+      console.error('Failed to load skill progress:', error);
+    }
+  };
+
+  const loadAllSessions = async () => {
+    try {
+      const response = await fetch(`${API_URL}/sessions`);
+      const data = await response.json();
+      setAllSessions(data.sessions || []);
+    } catch (error) {
+      console.error('Failed to load all sessions:', error);
+    }
+  };
+
+  const deleteSession = async (sessionId) => {
+    if (!window.confirm('Are you sure you want to delete this session? This cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/sessions/${sessionId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        await loadAllSessions();
+        await loadStats();
+      } else {
+        console.error('Failed to delete session');
+      }
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (showSessionManager) {
+      loadAllSessions();
+    }
+  }, [showSessionManager]);
+
+  if (loading) {
+    return (
+      <div className="container">
+        <button onClick={() => navigate('/')} className="back-button">
+          <ChevronLeft size={20} />
+          Back to Dashboard
+        </button>
+        <div className="loading-state">
+          <div className="spinner"></div>
+          <p>Loading analytics...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container container-wide">
+      <button onClick={() => navigate('/')} className="back-button">
+        <ChevronLeft size={20} />
+        Back to Dashboard
+      </button>
+
+      <div className="analytics-header">
+        <h2>Progress & Analytics</h2>
+        <p className="subtitle">Track your artistic development over time</p>
+      </div>
+
+      <div className="period-selector">
+        {['week', 'month', 'year', 'all'].map(p => (
+          <button
+            key={p}
+            onClick={() => setPeriod(p)}
+            className={`period-button ${period === p ? 'active' : ''}`}
+          >
+            {p === 'all' ? 'All Time' : `This ${p.charAt(0).toUpperCase() + p.slice(1)}`}
+          </button>
+        ))}
+      </div>
+
+      <div className="stats-cards">
+        <div className="stat-card stat-card-blue">
+          <div className="stat-content">
+            <Clock size={32} />
+            <span className="stat-value">{practiceStats?.totalHours || 0}h</span>
+          </div>
+          <p className="stat-label">Total Practice Time</p>
+          <p className="stat-sublabel">{practiceStats?.totalSessions || 0} sessions</p>
+        </div>
+
+        <div className="stat-card stat-card-purple">
+          <div className="stat-content">
+            <Image size={32} />
+            <span className="stat-value">{artworkStats?.totalArtwork || 0}</span>
+          </div>
+          <p className="stat-label">Artworks Created</p>
+          <p className="stat-sublabel">{artworkStats?.recentArtworkCount || 0} this month</p>
+        </div>
+
+        <div className="stat-card stat-card-orange">
+          <div className="stat-content">
+            <Target size={32} />
+            <span className="stat-value">{practiceStats?.totalImages || 0}</span>
+          </div>
+          <p className="stat-label">Reference Studies</p>
+          <p className="stat-sublabel">Avg {practiceStats?.averageSessionMinutes || 0} min/session</p>
+        </div>
+
+        <div className="stat-card stat-card-green">
+          <div className="stat-content">
+            <Award size={32} />
+            <span className="stat-value">{practiceStats?.currentStreak || 0}</span>
+          </div>
+          <p className="stat-label">Day Streak</p>
+          <p className="stat-sublabel">Keep it up!</p>
+        </div>
+      </div>
+
+      <div className="analytics-grid">
+        <div className="card">
+          <h3 className="card-title">
+            <BarChart3 size={20} />
+            Practice by Skill
+          </h3>
+          <div className="skill-bars">
+            {Object.entries(practiceStats?.practiceBySkill || {})
+              .sort(([, a], [, b]) => b.minutes - a.minutes)
+              .map(([skill, data]) => (
+                <div key={skill} className="skill-bar-item">
+                  <div className="skill-bar-header">
+                    <button
+                      onClick={() => setSelectedSkill(skill)}
+                      className="skill-name-button"
+                    >
+                      {skill}
+                    </button>
+                    <span className="skill-hours">{Math.round(data.minutes / 60 * 10) / 10}h</span>
+                  </div>
+                  <div className="progress-bar">
+                    <div
+                      className="progress-bar-fill progress-bar-teal"
+                      style={{ 
+                        width: `${(data.minutes / Math.max(...Object.values(practiceStats?.practiceBySkill || {}).map(d => d.minutes))) * 100}%` 
+                      }}
+                    />
+                  </div>
+                  <p className="skill-meta">{data.sessions} sessions • {data.images} images</p>
+                </div>
+              ))}
+            {Object.keys(practiceStats?.practiceBySkill || {}).length === 0 && (
+              <p className="empty-message">No practice data yet. Start a warmup session!</p>
+            )}
+          </div>
+        </div>
+
+        <div className="card">
+          <h3 className="card-title">
+            <Image size={20} />
+            Artwork by Skill
+          </h3>
+          <div className="skill-bars">
+            {Object.entries(artworkStats?.artworkBySkill || {})
+              .sort(([, a], [, b]) => b - a)
+              .map(([skill, count]) => (
+                <div key={skill} className="skill-bar-item">
+                  <div className="skill-bar-header">
+                    <button
+                      onClick={() => setSelectedSkill(skill)}
+                      className="skill-name-button"
+                    >
+                      {skill}
+                    </button>
+                    <span className="skill-hours">{count} pieces</span>
+                  </div>
+                  <div className="progress-bar">
+                    <div
+                      className="progress-bar-fill progress-bar-purple"
+                      style={{ 
+                        width: `${(count / Math.max(...Object.values(artworkStats?.artworkBySkill || {}))) * 100}%` 
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            {Object.keys(artworkStats?.artworkBySkill || {}).length === 0 && (
+              <p className="empty-message">No artwork uploaded yet. Upload your first piece!</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3 className="card-title">
+          <Calendar size={20} />
+          Practice Activity
+        </h3>
+        <div className="activity-timeline">
+          {Object.entries(practiceStats?.practiceByDay || {})
+            .sort(([a], [b]) => b.localeCompare(a))
+            .slice(0, 30)
+            .map(([date, data]) => (
+              <div key={date} className="activity-row">
+                <span className="activity-date">{date}</span>
+                <div className="activity-bar-container">
+                  <div
+                    className="activity-bar"
+                    style={{ width: `${Math.min((data.minutes / 120) * 100, 100)}%` }}
+                  >
+                    {data.minutes > 10 && <span className="activity-text">{data.minutes}m</span>}
+                  </div>
+                </div>
+                <span className="activity-sessions">{data.sessions} session{data.sessions !== 1 ? 's' : ''}</span>
+              </div>
+            ))}
+          {Object.keys(practiceStats?.practiceByDay || {}).length === 0 && (
+            <p className="empty-message">No practice activity recorded yet</p>
+          )}
+        </div>
+      </div>
+
+      {selectedSkill && skillProgress && (
+        <div className="card skill-detail-card">
+          <div className="skill-detail-header">
+            <h3>{selectedSkill} Progress</h3>
+            <button
+              onClick={() => {
+                setSelectedSkill(null);
+                setSkillProgress(null);
+              }}
+              className="icon-button"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="skill-stats-grid">
+            <div className="skill-stat-box">
+              <p className="skill-stat-value skill-stat-blue">{skillProgress.totalPracticeSessions}</p>
+              <p className="skill-stat-label">Practice Sessions</p>
+              <p className="skill-stat-sublabel">{Math.round(skillProgress.totalPracticeMinutes / 60 * 10) / 10} hours</p>
+            </div>
+            <div className="skill-stat-box">
+              <p className="skill-stat-value skill-stat-purple">{skillProgress.totalArtwork}</p>
+              <p className="skill-stat-label">Artwork Created</p>
+            </div>
+            <div className="skill-stat-box">
+              <p className="skill-stat-value skill-stat-green">{skillProgress.totalCritiques}</p>
+              <p className="skill-stat-label">Critiques Received</p>
+            </div>
+          </div>
+
+          <div className="skill-timeline">
+            <h4>Activity Timeline</h4>
+            <div className="timeline-items">
+              {Object.entries(skillProgress.timeline || {})
+                .sort(([a], [b]) => b.localeCompare(a))
+                .map(([month, data]) => (
+                  <div key={month} className="timeline-item">
+                    <span className="timeline-month">{month}</span>
+                    <div className="timeline-badges">
+                      {data.practice > 0 && (
+                        <span className="timeline-badge timeline-badge-blue">
+                          {data.practice} practice
+                        </span>
+                      )}
+                      {data.artwork > 0 && (
+                        <span className="timeline-badge timeline-badge-purple">
+                          {data.artwork} artwork
+                        </span>
+                      )}
+                      {data.critiques > 0 && (
+                        <span className="timeline-badge timeline-badge-green">
+                          {data.critiques} critiques
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+
+          <div className="skill-recent-grid">
+            <div>
+              <h4>Recent Practice Sessions</h4>
+              <div className="recent-items">
+                {skillProgress.recentSessions?.slice(0, 5).map((session, idx) => (
+                  <div key={idx} className="recent-item">
+                    <p className="recent-title">{session.duration} minutes</p>
+                    <p className="recent-date">{new Date(session.completedAt).toLocaleDateString()}</p>
+                  </div>
+                ))}
+                {(!skillProgress.recentSessions || skillProgress.recentSessions.length === 0) && (
+                  <p className="empty-message-small">No recent sessions</p>
+                )}
+              </div>
+            </div>
+            <div>
+              <h4>Recent Artwork</h4>
+              <div className="recent-items">
+                {skillProgress.recentArtwork?.slice(0, 5).map((art, idx) => (
+                  <div key={idx} className="recent-item">
+                    <p className="recent-title">{art.originalName || 'Untitled'}</p>
+                    <p className="recent-date">{new Date(art.uploadedAt).toLocaleDateString()}</p>
+                  </div>
+                ))}
+                {(!skillProgress.recentArtwork || skillProgress.recentArtwork.length === 0) && (
+                  <p className="empty-message-small">No artwork yet</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="card insights-card">
+        <h3 className="card-title">
+          <TrendingUp size={20} />
+          Insights & Recommendations
+        </h3>
+        <div className="insights-grid">
+          {practiceStats?.currentStreak > 0 && (
+            <div className="insight-box insight-green">
+              <p className="insight-title">🔥 Great Consistency!</p>
+              <p className="insight-text">You've practiced {practiceStats.currentStreak} days in a row. Keep it up!</p>
+            </div>
+          )}
+          {practiceStats?.currentStreak === 0 && (
+            <div className="insight-box insight-green">
+              <p className="insight-title">💡 Start a Streak</p>
+              <p className="insight-text">Practice today to start building consistency!</p>
+            </div>
+          )}
+          {Object.keys(practiceStats?.practiceBySkill || {}).length > 0 && (
+            <div className="insight-box insight-teal">
+              <p className="insight-title">🎯 Most Practiced</p>
+              <p className="insight-text">
+                Your top skill is {Object.entries(practiceStats.practiceBySkill).sort(([,a], [,b]) => b.minutes - a.minutes)[0][0]}
+              </p>
+            </div>
+          )}
+          {artworkStats?.totalArtwork >= 10 && (
+            <div className="insight-box insight-teal">
+              <p className="insight-title">🎨 Prolific Artist!</p>
+              <p className="insight-text">You've created {artworkStats.totalArtwork} pieces of artwork!</p>
+            </div>
+          )}
+          {practiceStats?.totalHours >= 10 && (
+            <div className="insight-box insight-teal">
+              <p className="insight-title">⏰ Dedicated Practice</p>
+              <p className="insight-text">{practiceStats.totalHours} hours of focused practice time!</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="session-manager-header">
+          <h3 className="card-title">
+            <Calendar size={20} />
+            Session Management
+          </h3>
+          <button
+            onClick={() => setShowSessionManager(!showSessionManager)}
+            className="session-manager-toggle"
+          >
+            {showSessionManager ? 'Hide Sessions' : 'Manage Sessions'}
+          </button>
+        </div>
+
+        {showSessionManager && (
+          <div className="session-list">
+            {allSessions.length === 0 ? (
+              <p className="empty-message">No sessions recorded yet</p>
+            ) : (
+              <div className="sessions-table">
+                <div className="sessions-table-header">
+                  <span>Date</span>
+                  <span>Type</span>
+                  <span>Duration</span>
+                  <span>Images</span>
+                  <span>Skills</span>
+                  <span>Actions</span>
+                </div>
+                {allSessions
+                  .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt))
+                  .map(session => (
+                    <div key={session.id} className="sessions-table-row">
+                      <span className="session-date">
+                        {new Date(session.completedAt).toLocaleDateString()}
+                        <br />
+                        <small>{new Date(session.completedAt).toLocaleTimeString()}</small>
+                      </span>
+                      <span className="session-type">
+                        <span className={`session-type-badge session-type-${session.type}`}>
+                          {session.type}
+                        </span>
+                      </span>
+                      <span className="session-duration">{session.duration} min</span>
+                      <span className="session-images">{session.imageCount} images</span>
+                      <span className="session-skills">
+                        {session.skills && session.skills.length > 0
+                          ? session.skills.join(', ')
+                          : 'None'}
+                      </span>
+                      <span className="session-actions">
+                        <button
+                          onClick={() => deleteSession(session.id)}
+                          className="delete-session-button"
+                          title="Delete this session"
+                        >
+                          <X size={16} />
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AdminPanel() {
+  const [searchParams] = useSearchParams();
+  const [authStatus, setAuthStatus] = useState(null);
+  const [albums, setAlbums] = useState([]);
+  const [syncedAlbums, setSyncedAlbums] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState({});
+  const [albumsError, setAlbumsError] = useState(null);
+  const [pickerLoading, setPickerLoading] = useState(false);
+
+  useEffect(() => {
+    checkAuthStatus();
+    loadSyncedAlbums();
+  }, [searchParams]);
+
+  const checkAuthStatus = async () => {
+    try {
+      const response = await fetch(`${API_URL}/google-photos/auth-status`);
+      const data = await response.json();
+      setAuthStatus(data);
+
+      if (data.authenticated) {
+        await loadAlbums();
+      }
+    } catch (error) {
+      console.error('Failed to check auth status:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAlbums = async () => {
+    try {
+      const response = await fetch(`${API_URL}/google-photos/albums`);
+      const data = await response.json();
+      if (response.ok) {
+        setAlbums(data.albums || []);
+        setAlbumsError(null);
+      } else {
+        setAlbumsError(data.detail || 'Failed to load albums');
+        setAlbums([]);
+      }
+    } catch (error) {
+      console.error('Failed to load albums:', error);
+      setAlbumsError('Error loading albums. You may need to re-authenticate.');
+      setAlbums([]);
+    }
+  };
+
+  const loadSyncedAlbums = async () => {
+    try {
+      const response = await fetch(`${API_URL}/google-photos/synced-albums`);
+      const data = await response.json();
+      setSyncedAlbums(data.synced_albums || []);
+    } catch (error) {
+      console.error('Failed to load synced albums:', error);
+    }
+  };
+
+  const startOAuth = async () => {
+    try {
+      const response = await fetch(`${API_URL}/google-photos/auth-url`);
+      const data = await response.json();
+
+      if (data.auth_url) {
+        window.location.href = data.auth_url;
+      }
+    } catch (error) {
+      console.error('Failed to start OAuth:', error);
+    }
+  };
+
+  const syncAlbum = async (albumId, albumTitle) => {
+    setSyncing(prev => ({ ...prev, [albumId]: true }));
+    try {
+      const response = await fetch(`${API_URL}/google-photos/sync-album`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ album_id: albumId })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        alert(`Successfully synced ${data.photos_downloaded} photos from "${albumTitle}"`);
+        await loadSyncedAlbums();
+      } else {
+        alert(`Failed to sync album: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Failed to sync album:', error);
+      alert('Failed to sync album');
+    } finally {
+      setSyncing(prev => ({ ...prev, [albumId]: false }));
+    }
+  };
+
+  const openGooglePicker = async () => {
+    if (!authStatus?.authenticated) {
+      alert('Please authenticate with Google first');
+      return;
+    }
+
+    setPickerLoading(true);
+    try {
+      // Load the Picker API if not already loaded
+      if (!window.google?.picker) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://apis.google.com/js/picker-10.1.js';
+          script.async = true;
+          script.defer = true;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      // Get the access token from the backend and create picker
+      const response = await fetch(`${API_URL}/google-photos/auth-status`);
+      const authData = await response.json();
+
+      // Note: In a real implementation, you'd get the actual OAuth token from the backend
+      // For now, we'll show an alert with instructions
+      // The proper implementation would require exposing the token to the frontend
+
+      // Create a simple input for demonstration
+      const fileIds = prompt(
+        'Enter Google Drive file IDs (comma-separated) that you want to download. ' +
+        'These should be image files from your Google Drive.\n\n' +
+        'Example: 1abc_DEF-123..., 2xyz_GHI-456...\n\n' +
+        'You can get file IDs by right-clicking a file in Google Drive and copying the ID.'
+      );
+
+      if (!fileIds) return;
+
+      // Parse the file IDs
+      const idArray = fileIds
+        .split(',')
+        .map(id => id.trim())
+        .filter(id => id.length > 0);
+
+      if (idArray.length === 0) {
+        alert('No valid file IDs provided');
+        return;
+      }
+
+      // Download the photos
+      const downloadResponse = await fetch(`${API_URL}/google-photos/download-picker-photos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_ids: idArray })
+      });
+
+      const downloadData = await downloadResponse.json();
+
+      if (downloadResponse.ok) {
+        alert(`Successfully downloaded ${downloadData.downloaded_count} photos!\n\n${downloadData.message}`);
+        await loadSyncedAlbums();
+      } else {
+        alert(`Failed to download photos: ${downloadData.detail}`);
+      }
+    } catch (error) {
+      console.error('Error in Google Picker:', error);
+      alert(`Error: ${error.message || 'Failed to process Google Picker'}`);
+    } finally {
+      setPickerLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="admin-panel">
+        <div className="admin-header">
+          <h2>Admin Panel</h2>
+          <button onClick={() => window.history.back()} className="back-button">
+            <ChevronLeft size={20} />
+            Back to Dashboard
+          </button>
+        </div>
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <p>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="admin-panel">
+      <div className="admin-header">
+        <h2>Admin Panel</h2>
+        <button onClick={() => window.history.back()} className="back-button">
+          <ChevronLeft size={20} />
+          Back to Dashboard
+        </button>
+      </div>
+
+      {/* Google Photos Connection Status */}
+      <div className="admin-section">
+        <h3>Google Photos Integration</h3>
+
+        {authStatus && (
+          <div className={`status-box ${authStatus.authenticated ? 'status-success' : 'status-warning'}`}>
+            {authStatus.authenticated ? (
+              <>
+                <Check size={20} />
+                <span>Connected to Google Photos</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle size={20} />
+                <span>{authStatus.message}</span>
+              </>
+            )}
+          </div>
+        )}
+
+        {!authStatus?.authenticated && (
+          <button onClick={startOAuth} className="connect-button">
+            <Settings size={18} />
+            Connect Google Photos
+          </button>
+        )}
+
+        {authStatus?.authenticated && (
+          <button onClick={openGooglePicker} disabled={pickerLoading} className="connect-button" style={{ marginTop: '12px', backgroundColor: '#4285f4' }}>
+            {pickerLoading ? (
+              <>
+                <div className="loading-spinner-small"></div>
+                Loading Picker...
+              </>
+            ) : (
+              <>
+                <Download size={18} />
+                Browse & Download Photos from Google Drive
+              </>
+            )}
+          </button>
+        )}
+
+        {authStatus?.authenticated && albumsError && (
+          <div className="info-box" style={{ marginTop: '12px' }}>
+            <p style={{ marginBottom: '12px', color: '#ff9800' }}>
+              {albumsError}
+            </p>
+            <button onClick={startOAuth} className="connect-button" style={{ width: '100%' }}>
+              <Settings size={18} />
+              Re-authenticate with Google Photos
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Synced Albums */}
+      {syncedAlbums.length > 0 && (
+        <div className="admin-section">
+          <h3>Synced Albums</h3>
+          <div className="synced-albums-list">
+            {syncedAlbums.map(album => (
+              <div key={album.album_id} className="synced-album-item">
+                <div className="synced-album-info">
+                  <h4>{album.title}</h4>
+                  <p>{album.photo_count} photos • Last synced: {new Date(album.last_synced).toLocaleDateString()}</p>
+                </div>
+                <button
+                  onClick={() => syncAlbum(album.album_id, album.title)}
+                  disabled={syncing[album.album_id]}
+                  className="resync-button"
+                >
+                  {syncing[album.album_id] ? (
+                    <>
+                      <div className="loading-spinner-small"></div>
+                      Syncing...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw size={16} />
+                      Re-sync
+                    </>
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Available Albums */}
+      {authStatus?.authenticated && albums.length > 0 && (
+        <div className="admin-section">
+          <h3>Available Albums ({albums.length})</h3>
+          <div className="albums-grid">
+            {albums.map(album => {
+              const isSynced = syncedAlbums.some(s => s.album_id === album.id);
+              return (
+                <div key={album.id} className="album-card">
+                  {album.coverPhotoBaseUrl && (
+                    <img
+                      src={`${album.coverPhotoBaseUrl}=w300-h300-c`}
+                      alt={album.title}
+                      className="album-cover"
+                    />
+                  )}
+                  <div className="album-info">
+                    <h4>{album.title}</h4>
+                    <p>{album.mediaItemsCount || 0} photos</p>
+                  </div>
+                  <button
+                    onClick={() => syncAlbum(album.id, album.title)}
+                    disabled={syncing[album.id]}
+                    className={`sync-button ${isSynced ? 'synced' : ''}`}
+                  >
+                    {syncing[album.id] ? (
+                      <>
+                        <div className="loading-spinner-small"></div>
+                        Syncing...
+                      </>
+                    ) : isSynced ? (
+                      <>
+                        <Check size={16} />
+                        Synced
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw size={16} />
+                        Sync Album
+                      </>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PaintManager() {
+  const [paints, setPaints] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingPaint, setEditingPaint] = useState(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    pigment: '',
+    rgb: null
+  });
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    loadPaints();
+  }, []);
+
+  const loadPaints = async () => {
+    try {
+      const response = await fetch(`${API_URL}/paints`);
+      const data = await response.json();
+      setPaints(data.paints || []);
+    } catch (error) {
+      console.error('Failed to load paints:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    try {
+      const url = editingPaint
+        ? `${API_URL}/paints/${editingPaint.id}`
+        : `${API_URL}/paints`;
+
+      const method = editingPaint ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        await loadPaints();
+        resetForm();
+      }
+    } catch (error) {
+      console.error('Failed to save paint:', error);
+    }
+  };
+
+  const handleDelete = async (paintId) => {
+    if (!window.confirm('Are you sure you want to delete this paint?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/paints/${paintId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        await loadPaints();
+      }
+    } catch (error) {
+      console.error('Failed to delete paint:', error);
+    }
+  };
+
+  const handleEdit = (paint) => {
+    setEditingPaint(paint);
+    setFormData({
+      name: paint.name || '',
+      pigment: paint.pigment || '',
+      rgb: paint.rgb || null
+    });
+    setShowAddForm(true);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      pigment: '',
+      rgb: null
+    });
+    setEditingPaint(null);
+    setShowAddForm(false);
+  };
+
+  const lookupColor = async () => {
+    if (!formData.name) return;
+
+    try {
+      const response = await fetch(`${API_URL}/paints/lookup-color`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ color: formData.name })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setFormData({ ...formData, rgb: data.rgb });
+      } else {
+        alert('Could not find RGB values for this color name. You can enter them manually.');
+      }
+    } catch (error) {
+      console.error('Failed to lookup color:', error);
+    }
+  };
+
+  const filteredPaints = paints.filter(paint =>
+    paint.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    paint.pigment?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <div className="paint-manager">
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <p>Loading paints...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="paint-manager">
+      <div className="paint-header">
+        <div>
+          <h2>Paint Manager</h2>
+          <p className="paint-subtitle">Track your paints and pigments with RGB values</p>
+        </div>
+        <button onClick={() => window.history.back()} className="back-button">
+          <ChevronLeft size={20} />
+          Back to Dashboard
+        </button>
+      </div>
+
+      {/* Search and Add */}
+      <div className="paint-controls">
+        <div className="search-box">
+          <Search size={18} />
+          <input
+            type="text"
+            placeholder="Search paints by name or pigment..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="search-input-paint"
+          />
+        </div>
+        <button
+          onClick={() => setShowAddForm(!showAddForm)}
+          className="add-paint-button"
+        >
+          {showAddForm ? <X size={18} /> : <Plus size={18} />}
+          {showAddForm ? 'Cancel' : 'Add Paint'}
+        </button>
+      </div>
+
+      {/* Add/Edit Form */}
+      {showAddForm && (
+        <div className="paint-form-container">
+          <h3>{editingPaint ? 'Edit Paint' : 'Add New Paint'}</h3>
+          <form onSubmit={handleSubmit} className="paint-form">
+            <div className="form-group">
+              <label>Paint Name *</label>
+              <input
+                type="text"
+                required
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g., Cadmium Red"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Pigment Code</label>
+              <input
+                type="text"
+                value={formData.pigment}
+                onChange={(e) => setFormData({ ...formData, pigment: e.target.value })}
+                placeholder="e.g., PR108"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>RGB Values</label>
+              <div className="rgb-controls">
+                <button
+                  type="button"
+                  onClick={lookupColor}
+                  className="lookup-button"
+                >
+                  <Search size={16} />
+                  Lookup Color
+                </button>
+                {formData.rgb && (
+                  <div className="rgb-preview">
+                    <div
+                      className="color-swatch"
+                      style={{
+                        backgroundColor: `rgb(${formData.rgb.r}, ${formData.rgb.g}, ${formData.rgb.b})`
+                      }}
+                    />
+                    <span>RGB({formData.rgb.r}, {formData.rgb.g}, {formData.rgb.b})</span>
+                  </div>
+                )}
+              </div>
+              <div className="rgb-inputs">
+                <input
+                  type="number"
+                  min="0"
+                  max="255"
+                  placeholder="R"
+                  value={formData.rgb?.r || ''}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    rgb: { ...formData.rgb, r: parseInt(e.target.value) || 0 }
+                  })}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="255"
+                  placeholder="G"
+                  value={formData.rgb?.g || ''}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    rgb: { ...formData.rgb, g: parseInt(e.target.value) || 0 }
+                  })}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="255"
+                  placeholder="B"
+                  value={formData.rgb?.b || ''}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    rgb: { ...formData.rgb, b: parseInt(e.target.value) || 0 }
+                  })}
+                />
+              </div>
+            </div>
+
+            <div className="form-actions">
+              <button type="submit" className="submit-button">
+                {editingPaint ? 'Update Paint' : 'Add Paint'}
+              </button>
+              <button type="button" onClick={resetForm} className="cancel-button">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Paints List */}
+      <div className="paints-list">
+        <h3>Your Paints ({filteredPaints.length})</h3>
+        {filteredPaints.length === 0 ? (
+          <div className="empty-state">
+            <Palette size={48} />
+            <p>No paints found</p>
+            <p className="empty-hint">Add your first paint to get started!</p>
+          </div>
+        ) : (
+          <div className="paints-grid">
+            {filteredPaints.map(paint => (
+              <div key={paint.id} className="paint-card">
+                <div className="paint-card-header">
+                  {paint.rgb && (
+                    <div
+                      className="paint-color-swatch"
+                      style={{
+                        backgroundColor: `rgb(${paint.rgb.r}, ${paint.rgb.g}, ${paint.rgb.b})`
+                      }}
+                    />
+                  )}
+                  <div className="paint-card-info">
+                    <h4>{paint.name}</h4>
+                  </div>
+                </div>
+                <div className="paint-card-details">
+                  {paint.pigment && (
+                    <div className="paint-detail">
+                      <span className="detail-label">Pigment:</span>
+                      <span>{paint.pigment}</span>
+                    </div>
+                  )}
+                  {paint.rgb && (
+                    <div className="paint-detail">
+                      <span className="detail-label">RGB:</span>
+                      <span className="rgb-value">
+                        {paint.rgb.r}, {paint.rgb.g}, {paint.rgb.b}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="paint-card-actions">
+                  <button
+                    onClick={() => handleEdit(paint)}
+                    className="edit-paint-button"
+                    title="Edit paint"
+                  >
+                    <Edit size={16} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(paint.id)}
+                    className="delete-paint-button"
+                    title="Delete paint"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
