@@ -110,7 +110,7 @@ PRACTICE_SESSIONS_FILE = DATA_DIR / "practice_sessions.json"
 DRAWINGS_FILE = DATA_DIR / "drawings.json"
 IMAGE_INDEX_FILE = DATA_DIR / "image_index.json"
 EMBEDDINGS_FILE = DATA_DIR / "embeddings.npy"
-GOOGLE_PHOTOS_CREDENTIALS_FILE = DATA_DIR / "google_photos_credentials.json"
+GOOGLE_PHOTOS_CREDENTIALS_FILE = DATA_DIR / "google_auth.json"
 GOOGLE_PHOTOS_TOKEN_FILE = DATA_DIR / "google_photos_token.json"
 GOOGLE_ALBUMS_FILE = DATA_DIR / "google_albums.json"
 PAINTS_FILE = DATA_DIR / "paints.json"
@@ -1723,6 +1723,85 @@ async def download_selected_photos(body: dict):
         logger.error(f"Error in download_selected_photos: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to download photos: {str(e)}")
 
+@app.post("/api/google-photos/import-as-drawing")
+async def import_google_photo_as_drawing(body: dict):
+    """Import a photo from Google Photos as a drawing for critique"""
+    creds = get_google_photos_credentials()
+    if not creds:
+        raise HTTPException(status_code=401, detail="Not authenticated with Google")
+
+    try:
+        media_items = body.get("media_items", [])
+        if not media_items:
+            raise HTTPException(status_code=400, detail="No media items provided")
+
+        imported_drawings = []
+
+        for item in media_items:
+            try:
+                media_id = item.get("id")
+                base_url = item.get("baseUrl")
+                filename = item.get("filename", f"photo_{media_id}.jpg")
+
+                if base_url:
+                    # Download with full resolution
+                    download_url = f"{base_url}=d"
+                    response = requests.get(download_url)
+
+                    if response.status_code == 200:
+                        # Generate unique ID for drawing
+                        drawing_id = str(int(datetime.now().timestamp() * 1000))
+
+                        # Save to uploads directory
+                        file_extension = Path(filename).suffix
+                        new_filename = f"{drawing_id}{file_extension}"
+                        file_path = UPLOADS_DIR / new_filename
+
+                        with open(file_path, 'wb') as f:
+                            f.write(response.content)
+
+                        # Load drawings database
+                        drawings = json.loads(DRAWINGS_FILE.read_text())
+
+                        # Create drawing record
+                        new_drawing = {
+                            "id": drawing_id,
+                            "filename": new_filename,
+                            "path": str(file_path),
+                            "originalName": filename,
+                            "comment": "Imported from Google Photos",
+                            "uploadedAt": datetime.now().isoformat(),
+                            "critique": None,
+                            "source": "google_photos",
+                            "googlePhotosId": media_id
+                        }
+
+                        drawings.append(new_drawing)
+                        DRAWINGS_FILE.write_text(json.dumps(drawings, indent=2))
+
+                        logger.info(f"Imported Google Photo as drawing: {drawing_id}")
+                        imported_drawings.append(new_drawing)
+                    else:
+                        logger.error(f"Failed to download {filename}: HTTP {response.status_code}")
+
+            except Exception as e:
+                logger.error(f"Error importing media item {item.get('id')}: {e}")
+                continue
+
+        if imported_drawings:
+            return {
+                "success": True,
+                "imported_count": len(imported_drawings),
+                "drawings": imported_drawings,
+                "message": f"Successfully imported {len(imported_drawings)} photo(s) from Google Photos"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to import any photos")
+
+    except Exception as e:
+        logger.error(f"Error in import_google_photo_as_drawing: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to import photos: {str(e)}")
+
 @app.post("/api/google-photos/picker/create-session")
 async def create_picker_session():
     """Create a Google Photos Picker session"""
@@ -1753,11 +1832,16 @@ async def get_picker_session(session_id: str):
 
     try:
         response = make_picker_api_request(f'sessions/{session_id}', method='GET')
+        media_items_set = response.get('mediaItemsSet', False)
+
+        logger.info(f"Polling session {session_id}: mediaItemsSet={media_items_set}")
+        logger.info(f"Full session response: {json.dumps(response, indent=2)}")
 
         return {
             "session_id": response.get('id'),
-            "media_items_set": response.get('mediaItemsSet', False),
-            "picker_uri": response.get('pickerUri')
+            "media_items_set": media_items_set,
+            "picker_uri": response.get('pickerUri'),
+            "media_item_ids": response.get('mediaItemsSet') if isinstance(response.get('mediaItemsSet'), list) else []
         }
     except Exception as e:
         logger.error(f"Error polling picker session: {e}", exc_info=True)

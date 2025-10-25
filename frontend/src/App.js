@@ -639,6 +639,7 @@ function CritiqueTool({ skills }) {
   const [artMovements, setArtMovements] = useState([]);
   const [movementGuidance, setMovementGuidance] = useState(null);
   const [loadingMovement, setLoadingMovement] = useState(false);
+  const [importingFromGoogle, setImportingFromGoogle] = useState(false);
 
   useEffect(() => {
     loadDrawings();
@@ -773,6 +774,124 @@ function CritiqueTool({ skills }) {
     setLoadingMovement(false);
   };
 
+  const openGooglePhotosPickerForDrawing = async () => {
+    setImportingFromGoogle(true);
+    try {
+      // Create a picker session
+      const response = await fetch(`${API_URL}/google-photos/picker/create-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(`Failed to create picker session: ${data.detail}`);
+        setImportingFromGoogle(false);
+        return;
+      }
+
+      const { session_id, picker_uri, polling_config } = data;
+
+      // Open the picker in a new window
+      const pickerWindow = window.open(picker_uri, 'GooglePhotosPicker', 'width=800,height=600');
+
+      // Poll for completion
+      const pollInterval = polling_config?.pollInterval || 2000; // Poll more frequently
+      const maxPolls = 60; // Maximum 60 polls (2 minutes at 2s intervals)
+      let pollCount = 0;
+
+      const pollSession = async () => {
+        try {
+          pollCount++;
+          console.log(`Polling session ${session_id}... (poll #${pollCount})`);
+          const statusResponse = await fetch(`${API_URL}/google-photos/picker/session/${session_id}`);
+          const statusData = await statusResponse.json();
+
+          console.log('Picker session status:', statusData);
+          console.log('Window closed?', pickerWindow ? pickerWindow.closed : 'null');
+
+          if (statusData.media_items_set) {
+            // User has finished selecting photos
+            console.log('Photos selected! Fetching media items...');
+            if (pickerWindow && !pickerWindow.closed) {
+              pickerWindow.close();
+            }
+
+            // Fetch the selected media items
+            const mediaResponse = await fetch(`${API_URL}/google-photos/picker/session/${session_id}/media-items`);
+            const mediaData = await mediaResponse.json();
+
+            console.log('Media items:', mediaData);
+
+            if (mediaData.count > 0) {
+              await importGooglePhotosAsDrawings(mediaData.media_items);
+            } else {
+              alert('No photos were selected.');
+              setImportingFromGoogle(false);
+            }
+          } else if (pollCount >= maxPolls) {
+            // Timeout after max polls
+            console.log('Polling timeout - no photos selected');
+            alert('Picker session timed out. Please try again.');
+            setImportingFromGoogle(false);
+          } else {
+            // Continue polling regardless of window state
+            // The picker window closes itself after "Done" is clicked, but the API
+            // needs time to update the session status
+            console.log(`Continuing to poll in ${pollInterval}ms...`);
+            setTimeout(pollSession, pollInterval);
+          }
+        } catch (error) {
+          console.error('Error polling picker session:', error);
+          setImportingFromGoogle(false);
+        }
+      };
+
+      // Start polling
+      setTimeout(pollSession, pollInterval);
+
+    } catch (error) {
+      console.error('Failed to open Google Photos Picker:', error);
+      alert('Failed to open Google Photos Picker');
+      setImportingFromGoogle(false);
+    }
+  };
+
+  const importGooglePhotosAsDrawings = async (mediaItems) => {
+    try {
+      const response = await fetch(`${API_URL}/google-photos/import-as-drawing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          media_items: mediaItems.map(item => ({
+            id: item.id,
+            baseUrl: item.mediaFile?.url || item.baseUrl,
+            filename: item.filename
+          }))
+        })
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        alert(`Successfully imported ${result.imported_count} photo(s) from Google Photos!`);
+        await loadDrawings();
+        // Select the first imported drawing
+        if (result.drawings && result.drawings.length > 0) {
+          setSelectedDrawing(result.drawings[0]);
+        }
+      } else {
+        alert(`Import failed: ${result.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Failed to import photos:', error);
+      alert('Failed to import photos from Google Photos');
+    } finally {
+      setImportingFromGoogle(false);
+    }
+  };
+
   const filteredDrawings = drawings.filter(d =>
     d.originalName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     d.comment.toLowerCase().includes(searchQuery.toLowerCase())
@@ -803,6 +922,16 @@ function CritiqueTool({ skills }) {
               <Upload size={32} />
               <p className="upload-text-small">{uploading ? 'Uploading...' : 'Choose image'}</p>
             </label>
+
+            <button
+              onClick={openGooglePhotosPickerForDrawing}
+              className="button-secondary"
+              disabled={importingFromGoogle}
+              style={{ width: '100%', marginTop: '12px' }}
+            >
+              <Camera size={16} style={{ marginRight: '8px' }} />
+              {importingFromGoogle ? 'Importing...' : 'Import from Google Photos'}
+            </button>
 
             <div className="form-group">
               <label className="form-label">Comment/Notes (optional)</label>

@@ -1,3 +1,4 @@
 **/node_modules/*
 data/*
 venv/*
+backend/data/google_auth.json
