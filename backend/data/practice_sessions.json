@@ -1,1 +1,29 @@
-[]
+[
+  {
+    "id": "1761413585354",
+    "type": "warmup",
+    "duration": 0,
+    "skills": [],
+    "imageCount": 10,
+    "completedAt": "2025-10-25T17:33:05.262Z",
+    "date": "2025-10-25"
+  },
+  {
+    "id": "1761417349253",
+    "type": "warmup",
+    "duration": 16,
+    "skills": [],
+    "imageCount": 17,
+    "completedAt": "2025-10-25T18:35:48.934Z",
+    "date": "2025-10-25"
+  },
+  {
+    "id": "1761423081117",
+    "type": "warmup",
+    "duration": 95,
+    "skills": [],
+    "imageCount": 16,
+    "completedAt": "2025-10-25T20:11:20.777Z",
+    "date": "2025-10-25"
+  }
+]

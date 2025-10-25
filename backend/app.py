@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Query
+from fastapi import FastAPI, HTTPException, UploadFile, File, Query, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
@@ -22,6 +22,8 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 import requests
 import webcolors
+import zipfile
+import tempfile
 
 # Configure logging
 logging.basicConfig(
@@ -1033,6 +1035,78 @@ async def tag_image():
     """Tag image with metadata - STUB"""
     # TODO: Implement metadata tagging
     return {"error": "Not implemented yet"}
+
+@app.post("/api/images/upload-zip")
+async def upload_zip_images(zip_file: UploadFile = File(...), category: str = Form("reference")):
+    """Upload a ZIP file of images and extract them to the appropriate directory"""
+    if category not in ['reference', 'artwork', 'warmup']:
+        raise HTTPException(status_code=400, detail="Invalid category")
+
+    try:
+        # Determine target directory
+        if category == 'reference':
+            target_dir = Path(IMAGE_PATHS['reference'][0]) if IMAGE_PATHS['reference'] else Path(DATA_DIR.parent) / "sample_images" / "reference"
+        elif category == 'artwork':
+            target_dir = Path(IMAGE_PATHS['artwork'])
+        elif category == 'warmup':
+            target_dir = Path(DATA_DIR.parent) / "sample_images" / "warmup"
+        else:
+            target_dir = Path(DATA_DIR.parent) / "sample_images" / category
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create a temporary directory to extract the zip
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            # Save the uploaded zip file
+            zip_path = temp_path / zip_file.filename
+            content = await zip_file.read()
+            zip_path.write_bytes(content)
+
+            # Extract and process images
+            imported_count = 0
+            image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
+
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(temp_path)
+
+            # Walk through extracted files and copy images
+            for extracted_file in temp_path.rglob('*'):
+                if extracted_file.is_file() and extracted_file.suffix.lower() in image_extensions:
+                    try:
+                        # Create timestamped filename
+                        timestamped_name = f"{int(datetime.now().timestamp())}_{extracted_file.name}"
+                        dest_path = target_dir / timestamped_name
+
+                        # Copy file
+                        shutil.copy2(extracted_file, dest_path)
+                        logger.info(f"Imported image: {timestamped_name}")
+                        imported_count += 1
+                    except Exception as e:
+                        logger.error(f"Failed to import {extracted_file.name}: {e}")
+                        continue
+
+        # Rebuild index if this is a reference import
+        if category == 'reference':
+            try:
+                build_image_index(force_rebuild=False)
+            except Exception as e:
+                logger.warning(f"Could not rebuild index after zip import: {e}")
+
+        return {
+            "status": "success",
+            "category": category,
+            "imported": imported_count,
+            "target_directory": str(target_dir),
+            "message": f"Successfully imported {imported_count} images to {category}"
+        }
+
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Invalid ZIP file")
+    except Exception as e:
+        logger.error(f"Error uploading zip: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to import images: {str(e)}")
 
 # ============= ARTWORK/DRAWING ENDPOINTS =============
 
@@ -2152,6 +2226,162 @@ async def lookup_color(request: dict):
         return {"success": True, "rgb": rgb, "source": "color_name"}
 
     return {"success": False, "error": "Color not found"}
+
+@app.post("/api/google-photos/picker/import-to-category")
+async def import_picker_to_category(body: dict):
+    """Download and organize images from a picker session to the appropriate category directory"""
+    creds = get_google_photos_credentials()
+    if not creds:
+        raise HTTPException(status_code=401, detail="Not authenticated with Google")
+
+    try:
+        session_id = body.get("session_id")
+        category = body.get("category")  # 'reference', 'artwork', or 'warmup'
+
+        if not session_id or not category:
+            raise HTTPException(status_code=400, detail="Missing session_id or category")
+
+        if category not in ['reference', 'artwork', 'warmup']:
+            raise HTTPException(status_code=400, detail="Invalid category")
+
+        logger.info(f"Importing from picker session {session_id} to category {category}")
+
+        # First, poll the session to get the media items that were selected
+        try:
+            # Try to get the session with different approaches
+            logger.info(f"=== Attempting to get media items for session {session_id} ===")
+
+            # Approach 1: Try polling the session endpoint directly (as per Google Picker API)
+            try:
+                session_response = make_picker_api_request(f'sessions/{session_id}', method='GET')
+                logger.info(f"Session endpoint response: {json.dumps(session_response, indent=2)}")
+            except Exception as e:
+                logger.error(f"Session endpoint failed, trying alternative: {e}")
+                # Approach 2: The session might not support polling, return error message
+                raise HTTPException(
+                    status_code=400,
+                    detail="The Google Photos picker integration is not fully configured. The picker API requires additional setup. "
+                           "For now, please use the 'Add Images from Google Photos' feature to manually select and import photos. "
+                           "To complete setup, you need to configure your Google Cloud project with the Photos Picker API and provide additional OAuth scopes."
+                )
+
+            logger.info(f"Response keys: {list(session_response.keys())}")
+
+            # Try different field names for media items (Google API might use different names)
+            media_item_ids = (
+                session_response.get('mediaItemIds', []) or
+                session_response.get('mediaItems', []) or
+                session_response.get('selectedMediaItems', []) or
+                session_response.get('items', []) or
+                []
+            )
+
+            # If mediaItemsSet is True but we don't have the IDs, they might be in a sub-field
+            if not media_item_ids and session_response.get('mediaItemsSet'):
+                logger.warning(f"mediaItemsSet is True but no media item IDs found. Full response: {session_response}")
+
+            logger.info(f"Found {len(media_item_ids)} media items in picker session")
+
+            if not media_item_ids:
+                logger.warning(f"No media items found in picker session {session_id}. This might be because:")
+                logger.warning(f"1. User didn't select any images")
+                logger.warning(f"2. User cancelled the picker")
+                logger.warning(f"3. The API response format is different than expected")
+                logger.warning(f"Response keys available: {list(session_response.keys())}")
+                return {
+                    "status": "success",
+                    "category": category,
+                    "total": 0,
+                    "imported": 0,
+                    "failed": 0,
+                    "files": [],
+                    "message": "No images were selected in the picker. Did you close the picker window or select items and click Done?",
+                    "debug_session_id": session_id,
+                    "debug_response_keys": list(session_response.keys())
+                }
+        except Exception as e:
+            logger.error(f"Error polling picker session: {e}", exc_info=True)
+            logger.error(f"Session ID was: {session_id}")
+            raise HTTPException(status_code=500, detail=f"Failed to get selected images from picker: {str(e)}")
+
+        # Now fetch the media items from Google Photos Library API to get download URLs
+        media_items = []
+        for media_id in media_item_ids:
+            try:
+                media_item = make_google_photos_request(f'mediaItems/{media_id}')
+                media_items.append(media_item)
+                logger.info(f"Retrieved media item {media_id}")
+            except Exception as e:
+                logger.error(f"Error retrieving media item {media_id}: {e}")
+                continue
+
+        # Determine the target directory based on category
+        if category == 'reference':
+            # Use the first reference path from IMAGE_PATHS
+            target_dir = Path(IMAGE_PATHS['reference'][0]) if IMAGE_PATHS['reference'] else Path(DATA_DIR.parent) / "sample_images" / "reference"
+        elif category == 'artwork':
+            target_dir = Path(IMAGE_PATHS['artwork'])
+        elif category == 'warmup':
+            target_dir = Path(DATA_DIR.parent) / "sample_images" / "warmup"
+        else:
+            target_dir = Path(DATA_DIR.parent) / "sample_images" / category
+
+        # Create directory if it doesn't exist
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        downloaded_files = []
+        failed_count = 0
+
+        for media_item in media_items:
+            try:
+                media_id = media_item.get('id')
+                base_url = media_item.get('baseUrl')
+                filename = media_item.get('filename', f'photo_{media_id}.jpg')
+
+                if base_url:
+                    # Download with full resolution
+                    download_url = f"{base_url}=d"
+                    response = requests.get(download_url, timeout=30)
+
+                    if response.status_code == 200:
+                        # Save to target directory with timestamp
+                        timestamped_filename = f"{int(datetime.now().timestamp())}_{filename}"
+                        file_path = target_dir / timestamped_filename
+
+                        with open(file_path, 'wb') as f:
+                            f.write(response.content)
+
+                        logger.info(f"Downloaded image to {category}: {timestamped_filename}")
+                        downloaded_files.append({
+                            "id": media_id,
+                            "name": filename,
+                            "path": str(file_path),
+                            "category": category,
+                            "created": media_item.get('mediaMetadata', {}).get('creationTime')
+                        })
+                    else:
+                        logger.error(f"Failed to download {filename}: HTTP {response.status_code}")
+                        failed_count += 1
+
+            except Exception as e:
+                logger.error(f"Error downloading media item {media_id}: {e}")
+                failed_count += 1
+                continue
+
+        return {
+            "status": "success",
+            "category": category,
+            "total": len(media_items),
+            "imported": len(downloaded_files),
+            "failed": failed_count,
+            "files": downloaded_files,
+            "target_directory": str(target_dir),
+            "message": f"Successfully imported {len(downloaded_files)} images to {category}"
+        }
+
+    except Exception as e:
+        logger.error(f"Error in import_picker_to_category: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to import images: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

@@ -34,7 +34,9 @@
       "Bash(PORT=3000 npm start)",
       "Bash(npm init:*)",
       "Bash(npm install:*)",
-      "Bash(npx playwright install)"
+      "Bash(npx playwright install)",
+      "Bash(awk:*)",
+      "Bash(cp:*)"
     ],
     "deny": [],
     "ask": []

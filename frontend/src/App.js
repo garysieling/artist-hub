@@ -260,6 +260,8 @@ function DrawingWarmup({ skills }) {
   const durationOptions = [
     { value: 5, label: '5 minutes', plan: [{ count: 10, duration: 30 }] },
     { value: 10, label: '10 minutes', plan: [{ count: 15, duration: 30 }, { count: 5, duration: 60 }] },
+    { value: 15, label: '15 minutes', plan: [{ count: 10, duration: 30 }, { count: 4, duration: 60 }, { count: 2, duration: 180 }] },
+    { value: 20, label: '20 minutes', plan: [{ count: 10, duration: 30 }, { count: 4, duration: 60 }, { count: 2, duration: 180 }, { count: 1, duration: 300 }] },
     { value: 30, label: '30 minutes', plan: [{ count: 10, duration: 30 }, { count: 5, duration: 60 }, { count: 3, duration: 300 }] },
     { value: 60, label: '60 minutes', plan: [{ count: 10, duration: 30 }, { count: 5, duration: 60 }, { count: 5, duration: 300 }, { count: 2, duration: 600 }] }
   ];
@@ -1141,13 +1143,11 @@ function PhotoFinder({ skills }) {
   const [indexStatus, setIndexStatus] = useState(null);
   const [isSearching, setIsSearching] = useState(false);
 
-  // Album importer states
-  const [showAlbumImporter, setShowAlbumImporter] = useState(false);
-  const [albumImportStep, setAlbumImportStep] = useState('category'); // 'category', 'albums', 'preview', 'syncing'
-  const [albumCategory, setAlbumCategory] = useState(null); // 'reference', 'artwork', 'warmup'
-  const [albums, setAlbums] = useState([]);
-  const [selectedAlbum, setSelectedAlbum] = useState(null);
-  const [albumPhotos, setAlbumPhotos] = useState([]);
+  // Google Photos importer states
+  const [showImageImporter, setShowImageImporter] = useState(false);
+  const [imageImportStep, setImageImportStep] = useState('category'); // 'category', 'picker', 'syncing'
+  const [importCategory, setImportCategory] = useState(null); // 'reference', 'artwork', 'warmup'
+  const [pickerSessionId, setPickerSessionId] = useState(null);
   const [syncProgress, setSyncProgress] = useState(null);
 
   // Filter states
@@ -1158,6 +1158,17 @@ function PhotoFinder({ skills }) {
     status: 'All',
     skill: 'All Skills'
   });
+
+  // Shopping cart states
+  const [cartImages, setCartImages] = useState([]);
+  const [view, setView] = useState('browse'); // 'browse' or 'paint'
+
+  // Painting session states
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [sessionStartTime, setSessionStartTime] = useState(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [imageTimes, setImageTimes] = useState({});
+  const [isPainting, setIsPainting] = useState(false);
 
   // Seeded random number generator (for day-based consistency)
   const seededRandom = (seed) => {
@@ -1365,101 +1376,177 @@ function PhotoFinder({ skills }) {
     setSelectedMediums(metadata?.mediums || []);
   };
 
-  // Album Importer Functions
-  const startAlbumImport = () => {
-    setShowAlbumImporter(true);
-    setAlbumImportStep('category');
-  };
-
-  const selectCategory = async (category) => {
-    setAlbumCategory(category);
-    setAlbumImportStep('albums');
-
-    // Fetch albums from Google Photos
-    try {
-      const response = await fetch(`${API_URL}/google-photos/albums`);
-      if (response.ok) {
-        const data = await response.json();
-        setAlbums(data.albums || []);
-      } else {
-        alert('Failed to load albums. Please make sure you\'re authorized.');
-      }
-    } catch (error) {
-      console.error('Error loading albums:', error);
-      alert('Failed to load albums');
+  // Shopping Cart Functions
+  const toggleCartImage = (photo) => {
+    const isInCart = cartImages.some(img => img.path === photo.path);
+    if (isInCart) {
+      setCartImages(cartImages.filter(img => img.path !== photo.path));
+    } else {
+      setCartImages([...cartImages, photo]);
     }
   };
 
-  const selectAlbumForPreview = async (album) => {
-    setSelectedAlbum(album);
-    setAlbumImportStep('preview');
-
-    // Fetch photos from the album
-    try {
-      const response = await fetch(`${API_URL}/google-photos/albums/${album.id}/photos`);
-      if (response.ok) {
-        const data = await response.json();
-        setAlbumPhotos(data.photos || []);
-      } else {
-        alert('Failed to load album photos.');
-      }
-    } catch (error) {
-      console.error('Error loading album photos:', error);
-      alert('Failed to load album photos');
-    }
+  const isImageInCart = (photo) => {
+    return cartImages.some(img => img.path === photo.path);
   };
 
-  const startAlbumSync = async () => {
-    if (!selectedAlbum) return;
+  const startPaintingSession = () => {
+    if (cartImages.length === 0) {
+      alert('Please add images to your cart first');
+      return;
+    }
+    setCurrentImageIndex(0);
+    setSessionStartTime(Date.now());
+    setElapsedTime(0);
+    setImageTimes({});
+    setIsPainting(true);
+    setView('paint');
+  };
 
-    setAlbumImportStep('syncing');
-    setSyncProgress({ total: 0, current: 0, status: 'Starting sync...' });
+  const switchToImage = (index) => {
+    if (imageTimes[currentImageIndex] === undefined && currentImageIndex < cartImages.length) {
+      setImageTimes({
+        ...imageTimes,
+        [currentImageIndex]: elapsedTime
+      });
+    }
+    setCurrentImageIndex(index);
+  };
 
+  const endPaintingSession = async () => {
+    // Record final time for current image
+    if (imageTimes[currentImageIndex] === undefined) {
+      setImageTimes({
+        ...imageTimes,
+        [currentImageIndex]: elapsedTime
+      });
+    }
+
+    // Log the session to backend
     try {
-      const response = await fetch(`${API_URL}/google-photos/sync-album`, {
+      await fetch(`${API_URL}/sessions/log`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          albumId: selectedAlbum.id,
-          albumTitle: selectedAlbum.title,
-          category: albumCategory
+          type: 'painting',
+          duration: Math.round(elapsedTime / 60),
+          imageCount: cartImages.length,
+          imageTimes: imageTimes,
+          completedAt: new Date().toISOString()
+        })
+      });
+    } catch (error) {
+      console.error('Failed to log painting session:', error);
+    }
+
+    setView('browse');
+    setIsPainting(false);
+    setCartImages([]);
+    setCurrentImageIndex(0);
+    setSessionStartTime(null);
+    setElapsedTime(0);
+    setImageTimes({});
+  };
+
+  // Timer effect for painting session
+  useEffect(() => {
+    if (!isPainting || !sessionStartTime) return;
+
+    const interval = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - sessionStartTime) / 1000));
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [isPainting, sessionStartTime]);
+
+  // Google Photos Importer Functions
+  const startImageImport = () => {
+    setShowImageImporter(true);
+    setImageImportStep('category');
+  };
+
+  const selectCategory = async (category) => {
+    setImportCategory(category);
+    setImageImportStep('picker');
+
+    // Create a picker session
+    try {
+      const response = await fetch(`${API_URL}/google-photos/picker/create-session`, {
+        method: 'POST'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setPickerSessionId(data.session_id);
+        // Open picker in a new window
+        if (data.picker_uri) {
+          window.open(data.picker_uri, 'picker', 'width=600,height=800');
+        }
+      } else {
+        alert('Failed to start picker. Please make sure you\'re authorized.');
+      }
+    } catch (error) {
+      console.error('Error creating picker session:', error);
+      alert('Failed to start picker');
+    }
+  };
+
+  const completeImageImport = async () => {
+    if (!pickerSessionId) {
+      console.error('No picker session ID available');
+      alert('Error: No picker session. Please try again.');
+      return;
+    }
+
+    setImageImportStep('syncing');
+    setSyncProgress({ total: 0, current: 0, status: 'Importing images...' });
+
+    try {
+      console.log(`Starting import for session: ${pickerSessionId}, category: ${importCategory}`);
+
+      const response = await fetch(`${API_URL}/google-photos/picker/import-to-category`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: pickerSessionId,
+          category: importCategory
         })
       });
 
+      const data = await response.json();
+
       if (response.ok) {
-        const data = await response.json();
+        console.log('Import successful:', data);
         setSyncProgress({
           total: data.total,
-          current: data.synced,
-          status: 'Sync complete!'
+          current: data.imported,
+          status: 'Import complete!'
         });
 
         // Reset after 2 seconds
         setTimeout(() => {
-          setShowAlbumImporter(false);
-          setAlbumImportStep('category');
+          setShowImageImporter(false);
+          setImageImportStep('category');
           setSyncProgress(null);
-          setSelectedAlbum(null);
-          setAlbums([]);
-          loadPhotos(); // Reload photos to show newly synced ones
+          setPickerSessionId(null);
+          loadPhotos(); // Reload photos to show newly imported ones
         }, 2000);
       } else {
-        alert('Failed to sync album');
-        setAlbumImportStep('preview');
+        console.error('Import failed:', data);
+        alert(`Failed to import images: ${data.detail || 'Unknown error'}`);
+        setImageImportStep('picker');
       }
     } catch (error) {
-      console.error('Error syncing album:', error);
-      alert('Failed to sync album');
-      setAlbumImportStep('preview');
+      console.error('Error importing images:', error);
+      alert(`Failed to import images: ${error.message}`);
+      setImageImportStep('picker');
     }
   };
 
-  const closeAlbumImporter = () => {
-    setShowAlbumImporter(false);
-    setAlbumImportStep('category');
+  const closeImageImporter = () => {
+    setShowImageImporter(false);
+    setImageImportStep('category');
     setSyncProgress(null);
-    setSelectedAlbum(null);
-    setAlbums([]);
+    setPickerSessionId(null);
   };
 
   useEffect(() => {
@@ -1467,6 +1554,135 @@ function PhotoFinder({ skills }) {
     checkIndexStatus();
   }, []);
 
+  if (view === 'paint' && isPainting) {
+    // Painting session view
+    const currentImage = cartImages[currentImageIndex];
+    const formatTime = (seconds) => {
+      const hours = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+      if (hours > 0) {
+        return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      }
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    return (
+      <div className="container container-wide">
+        <button onClick={() => navigate('/')} className="back-button">
+          <ChevronLeft size={20} />
+          Back to Dashboard
+        </button>
+
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+            <h2>Painting Session</h2>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#667eea' }}>
+                {formatTime(elapsedTime)}
+              </div>
+              <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
+                {currentImageIndex + 1} / {cartImages.length}
+              </p>
+            </div>
+          </div>
+
+          {currentImage && (
+            <div>
+              <div style={{ position: 'relative', marginBottom: '2rem' }}>
+                <img
+                  src={`${API_URL}/images/file?path=${encodeURIComponent(currentImage.path)}`}
+                  alt="Current reference"
+                  style={{
+                    width: '100%',
+                    maxHeight: '60vh',
+                    objectFit: 'contain',
+                    borderRadius: '8px',
+                    backgroundColor: '#f0f0f0'
+                  }}
+                />
+              </div>
+
+              {/* Carousel of images below */}
+              <div style={{ marginBottom: '2rem' }}>
+                <div style={{
+                  display: 'flex',
+                  gap: '1rem',
+                  overflowX: 'auto',
+                  paddingBottom: '1rem',
+                  borderTop: '1px solid #eee',
+                  paddingTop: '1rem'
+                }}>
+                  {cartImages.map((img, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => switchToImage(idx)}
+                      style={{
+                        flexShrink: 0,
+                        width: '120px',
+                        height: '120px',
+                        padding: idx === currentImageIndex ? '3px' : '0',
+                        border: idx === currentImageIndex ? '3px solid #667eea' : 'none',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        backgroundColor: 'transparent',
+                        transition: 'all 0.3s ease'
+                      }}
+                    >
+                      <img
+                        src={`${API_URL}/images/file?path=${encodeURIComponent(img.path)}`}
+                        alt={`Reference ${idx + 1}`}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          borderRadius: '5px',
+                          opacity: idx === currentImageIndex ? 1 : 0.6
+                        }}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                <button
+                  onClick={() => {
+                    if (currentImageIndex > 0) {
+                      switchToImage(currentImageIndex - 1);
+                    }
+                  }}
+                  disabled={currentImageIndex === 0}
+                  className="button button-secondary"
+                >
+                  ← Previous
+                </button>
+                <button
+                  onClick={endPaintingSession}
+                  className="button button-red"
+                >
+                  End Session
+                </button>
+                <button
+                  onClick={() => {
+                    if (currentImageIndex < cartImages.length - 1) {
+                      switchToImage(currentImageIndex + 1);
+                    }
+                  }}
+                  disabled={currentImageIndex === cartImages.length - 1}
+                  className="button button-secondary"
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Browse view
   return (
     <div className="container container-wide">
       <button onClick={() => navigate('/')} className="back-button">
@@ -1475,22 +1691,34 @@ function PhotoFinder({ skills }) {
       </button>
 
       <div className="card">
-        <h2>Photo Finder</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+          <h2>Photo Finder</h2>
+          {cartImages.length > 0 && (
+            <button
+              onClick={startPaintingSession}
+              className="button button-blue"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <Play size={20} />
+              Start Painting ({cartImages.length})
+            </button>
+          )}
+        </div>
 
-        {showAlbumImporter && (
+        {showImageImporter && (
           <div className="modal-overlay">
             <div className="modal">
               <button
-                onClick={closeAlbumImporter}
+                onClick={closeImageImporter}
                 className="modal-close"
               >
                 <X size={24} />
               </button>
 
-              {albumImportStep === 'category' && (
+              {imageImportStep === 'category' && (
                 <div className="album-importer">
-                  <h3>Import from Google Photos</h3>
-                  <p className="section-subtitle">What do you want to import?</p>
+                  <h3>Add Images from Google Photos</h3>
+                  <p className="section-subtitle">Where do you want to save these images?</p>
 
                   <div className="category-buttons">
                     <button
@@ -1498,7 +1726,7 @@ function PhotoFinder({ skills }) {
                       className="category-btn"
                     >
                       <Image size={32} />
-                      <span>Add a Reference Album</span>
+                      <span>Reference Images</span>
                       <p>Reference images for studies</p>
                     </button>
                     <button
@@ -1506,7 +1734,7 @@ function PhotoFinder({ skills }) {
                       className="category-btn"
                     >
                       <Upload size={32} />
-                      <span>Add an Artwork Album</span>
+                      <span>Artwork</span>
                       <p>Your own artwork pieces</p>
                     </button>
                     <button
@@ -1514,87 +1742,62 @@ function PhotoFinder({ skills }) {
                       className="category-btn"
                     >
                       <Clock size={32} />
-                      <span>Add Warmup Images</span>
+                      <span>Warmup Images</span>
                       <p>Quick sketches and warmups</p>
                     </button>
                   </div>
                 </div>
               )}
 
-              {albumImportStep === 'albums' && (
+              {imageImportStep === 'picker' && (
                 <div className="album-importer">
-                  <h3>Select an Album</h3>
-                  <p className="section-subtitle">Choose which album to import</p>
+                  <h3>Select Images</h3>
+                  <p className="section-subtitle">Choose images from Google Photos</p>
 
-                  {albums.length === 0 ? (
-                    <p className="text-center">No albums found</p>
-                  ) : (
-                    <div className="albums-list">
-                      {albums.map((album) => (
-                        <button
-                          key={album.id}
-                          onClick={() => selectAlbumForPreview(album)}
-                          className="album-item"
-                        >
-                          <div className="album-info">
-                            <h4>{album.title}</h4>
-                            <p>{album.mediaItemsCount || 0} photos</p>
-                          </div>
-                          <ChevronLeft size={20} style={{ transform: 'rotate(180deg)' }} />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {albumImportStep === 'preview' && selectedAlbum && (
-                <div className="album-importer">
-                  <h3>Preview: {selectedAlbum.title}</h3>
-                  <p className="section-subtitle">{albumPhotos.length} photos will be imported</p>
-
-                  {albumPhotos.length > 0 && (
-                    <div className="preview-grid">
-                      {albumPhotos.slice(0, 9).map((photo, idx) => (
-                        <div key={idx} className="preview-thumbnail">
-                          {photo.baseUrl && (
-                            <img
-                              src={photo.baseUrl + '=w150-h150'}
-                              alt={`Preview ${idx}`}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px' }}
-                            />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <div style={{
+                    backgroundColor: '#f5f5f5',
+                    padding: '2rem',
+                    borderRadius: '8px',
+                    textAlign: 'center',
+                    marginBottom: '1rem'
+                  }}>
+                    <p style={{ marginBottom: '1rem' }}>A Google Photos picker window should have opened.</p>
+                    <p style={{ color: '#666', fontSize: '0.9rem' }}>
+                      If it didn't appear, you may need to check your browser's popup blocker.
+                      <br />
+                      Please select your images in the picker window, then click "Done" when finished.
+                    </p>
+                    <p style={{ marginTop: '1rem', fontSize: '0.85rem', color: '#999' }}>
+                      Session ID: {pickerSessionId?.substring(0, 8)}...
+                    </p>
+                  </div>
 
                   <div className="button-group">
                     <button
-                      onClick={() => setAlbumImportStep('albums')}
+                      onClick={() => setImageImportStep('category')}
                       className="button button-secondary"
                     >
                       Back
                     </button>
                     <button
-                      onClick={startAlbumSync}
+                      onClick={completeImageImport}
                       className="button button-primary"
                     >
-                      Sync This Album
+                      Complete Import
                     </button>
                   </div>
                 </div>
               )}
 
-              {albumImportStep === 'syncing' && syncProgress && (
+              {imageImportStep === 'syncing' && syncProgress && (
                 <div className="album-importer">
-                  <h3>Syncing...</h3>
+                  <h3>Importing...</h3>
                   <div className="sync-progress">
                     <div className="spinner"></div>
                     <p>{syncProgress.status}</p>
                     {syncProgress.total > 0 && (
                       <p className="progress-text">
-                        {syncProgress.current} / {syncProgress.total} photos synced
+                        {syncProgress.current} / {syncProgress.total} images imported
                       </p>
                     )}
                   </div>
@@ -1604,14 +1807,79 @@ function PhotoFinder({ skills }) {
           </div>
         )}
 
-        <button
-          onClick={startAlbumImport}
-          className="button button-primary"
-          style={{ marginBottom: '1.5rem' }}
-        >
-          <Download size={20} style={{ marginRight: '0.5rem' }} />
-          Import from Google Photos
-        </button>
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+          <button
+            onClick={startImageImport}
+            className="button button-primary"
+          >
+            <Download size={20} style={{ marginRight: '0.5rem' }} />
+            Add Images from Google Photos
+          </button>
+
+          <div style={{ flex: 1, position: 'relative' }}>
+            <input
+              type="file"
+              accept=".zip"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+
+                const formData = new FormData();
+                formData.append('zip_file', file);
+                formData.append('category', 'reference');
+
+                try {
+                  const response = await fetch(`${API_URL}/images/upload-zip`, {
+                    method: 'POST',
+                    body: formData
+                  });
+
+                  if (response.ok) {
+                    const data = await response.json();
+                    alert(`Successfully imported ${data.imported} images!`);
+                    loadPhotos();
+                  } else {
+                    const error = await response.json();
+                    alert(`Failed to import: ${error.detail}`);
+                  }
+                } catch (error) {
+                  console.error('Error uploading zip:', error);
+                  alert(`Error uploading file: ${error.message}`);
+                }
+
+                // Reset input
+                e.target.value = '';
+              }}
+              style={{ display: 'none' }}
+              id="zip-upload-input"
+            />
+            <label
+              htmlFor="zip-upload-input"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.75rem 1.5rem',
+                backgroundColor: '#e3f2fd',
+                color: '#1976d2',
+                border: '2px dashed #1976d2',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                fontWeight: '500'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#bbdefb';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#e3f2fd';
+              }}
+            >
+              <Upload size={20} />
+              Upload ZIP of Images
+            </label>
+          </div>
+        </div>
 
         {indexStatus && !indexStatus.indexed && (
           <div className="alert alert-info">
@@ -1749,29 +2017,74 @@ function PhotoFinder({ skills }) {
               {photos.slice(0, 20).map((photo, idx) => {
                 const metadata = photoMetadata[photo.path];
                 const isDrawn = metadata?.drawn === true;
+                const inCart = isImageInCart(photo);
 
                 return (
                   <div
                     key={idx}
-                    className={`photo-card ${isDrawn ? 'photo-drawn' : ''}`}
-                    onClick={() => openPhotoModal(photo)}
+                    style={{ position: 'relative', group: 'photo' }}
+                    onMouseEnter={(e) => {
+                      const checkbox = e.currentTarget.querySelector('.cart-checkbox');
+                      if (checkbox) checkbox.style.opacity = '1';
+                    }}
+                    onMouseLeave={(e) => {
+                      const checkbox = e.currentTarget.querySelector('.cart-checkbox');
+                      if (checkbox && !inCart) checkbox.style.opacity = '0';
+                    }}
                   >
-                    <img
-                      src={`${API_URL}/images/file?path=${encodeURIComponent(photo.path)}`}
-                      alt={photo.name}
-                      className="photo-thumbnail"
-                    />
-                    {isDrawn && (
-                      <div className="photo-drawn-badge">
-                        ✓ Drawn
-                      </div>
-                    )}
-                    <div className="photo-info">
-                      <p className="photo-name">{photo.name}</p>
-                      {metadata?.mediums && metadata.mediums.length > 0 && (
-                        <p className="photo-mediums">{metadata.mediums.join(', ')}</p>
+                    <div
+                      className={`photo-card ${isDrawn ? 'photo-drawn' : ''}`}
+                      onClick={() => openPhotoModal(photo)}
+                    >
+                      <img
+                        src={`${API_URL}/images/file?path=${encodeURIComponent(photo.path)}`}
+                        alt={photo.name}
+                        className="photo-thumbnail"
+                      />
+                      {isDrawn && (
+                        <div className="photo-drawn-badge">
+                          ✓ Drawn
+                        </div>
                       )}
+                      <div className="photo-info">
+                        <p className="photo-name">{photo.name}</p>
+                        {metadata?.mediums && metadata.mediums.length > 0 && (
+                          <p className="photo-mediums">{metadata.mediums.join(', ')}</p>
+                        )}
+                      </div>
                     </div>
+
+                    {/* Hover Checkbox for Shopping Cart */}
+                    <button
+                      className="cart-checkbox"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCartImage(photo);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: '10px',
+                        right: '10px',
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '50%',
+                        border: '2px solid white',
+                        backgroundColor: inCart ? '#667eea' : 'rgba(0, 0, 0, 0.5)',
+                        color: 'white',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '24px',
+                        opacity: inCart ? '1' : '0',
+                        transition: 'all 0.3s ease',
+                        zIndex: 10,
+                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+                        padding: '0'
+                      }}
+                    >
+                      {inCart ? '✓' : '+'}
+                    </button>
                   </div>
                 );
               })}
