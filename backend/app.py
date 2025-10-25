@@ -41,20 +41,62 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configuration - Update these paths to match your system
-IMAGE_PATHS = {
-    "reference": [
-        r"D:\projects\art-models\4",
-        r"D:\projects\art-models\5",
-        r"D:\projects\art-models\8",
-        r"D:\projects\art-models\reference.pictures"
-    ],
-    "photos": r"D:\projects\art-models\googlephotos",
-    "artwork": r"D:\projects\art models\my_artwork"  # Note: this one uses "art models" with space
-}
+# Configuration - Load from config.json if it exists, otherwise use fallback paths
+_PROJECT_ROOT = Path(__file__).parent.parent
+_CONFIG_FILE = Path(__file__).parent / "config.json"
+
+def load_image_paths():
+    """Load image paths from config.json with fallback to sample directories"""
+    if _CONFIG_FILE.exists():
+        try:
+            config = json.loads(_CONFIG_FILE.read_text())
+            paths = config.get("image_paths", {})
+
+            # Check if primary paths exist, otherwise use fallback
+            fallback = config.get("fallback_paths", {})
+            result = {}
+
+            # Check reference paths
+            ref_paths = paths.get("reference", [])
+            valid_ref_paths = [p for p in ref_paths if Path(p).exists()]
+            if valid_ref_paths:
+                result["reference"] = valid_ref_paths
+            else:
+                fallback_refs = fallback.get("reference", [])
+                result["reference"] = [str(_PROJECT_ROOT / p) if not Path(p).is_absolute() else p
+                                      for p in fallback_refs]
+
+            # Check photos path
+            photos_path = paths.get("photos", "")
+            if photos_path and Path(photos_path).exists():
+                result["photos"] = photos_path
+            else:
+                fallback_photos = fallback.get("photos", "./sample_images/photos")
+                result["photos"] = str(_PROJECT_ROOT / fallback_photos) if not Path(fallback_photos).is_absolute() else fallback_photos
+
+            # Check artwork path
+            artwork_path = paths.get("artwork", "")
+            if artwork_path and Path(artwork_path).exists():
+                result["artwork"] = artwork_path
+            else:
+                fallback_artwork = fallback.get("artwork", "./sample_images/artwork")
+                result["artwork"] = str(_PROJECT_ROOT / fallback_artwork) if not Path(fallback_artwork).is_absolute() else fallback_artwork
+
+            return result
+        except Exception as e:
+            logger.warning(f"Error loading config.json: {e}, using fallback paths")
+
+    # Default fallback - use sample directories
+    return {
+        "reference": [str(_PROJECT_ROOT / "sample_images" / "reference")],
+        "photos": str(_PROJECT_ROOT / "sample_images" / "photos"),
+        "artwork": str(_PROJECT_ROOT / "sample_images" / "artwork")
+    }
+
+IMAGE_PATHS = load_image_paths()
 
 # Data directory for JSON storage
-DATA_DIR = Path(__file__).parent.parent / "data"
+DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
 # Uploads directory for user artwork
@@ -73,10 +115,10 @@ GOOGLE_PHOTOS_TOKEN_FILE = DATA_DIR / "google_photos_token.json"
 GOOGLE_ALBUMS_FILE = DATA_DIR / "google_albums.json"
 PAINTS_FILE = DATA_DIR / "paints.json"
 
-# Google Photos OAuth scopes - using Google Picker API which requires drive.readonly
-# Picker API uses Google Drive to access photos, not the Photos Library API
+# Google Photos OAuth scopes - using Google Photos Picker API
+# Note: photoslibrary.readonly was deprecated on March 31, 2025
 GOOGLE_PHOTOS_SCOPES = [
-    'https://www.googleapis.com/auth/drive.readonly'
+    'https://www.googleapis.com/auth/photospicker.mediaitems.readonly'
 ]
 
 # Initialize data files
@@ -1499,7 +1541,12 @@ async def generate_critique():
     # TODO: Implement with HuggingFace LLM
     return {"error": "Not implemented yet"}
 
-# ============= HEALTH CHECK =============
+# ============= HEALTH CHECK & ROOT =============
+
+@app.get("/")
+async def root():
+    """Redirect to interactive API documentation"""
+    return RedirectResponse(url="/docs")
 
 @app.get("/api/health")
 async def health_check():
@@ -1508,21 +1555,42 @@ async def health_check():
 
 # ============= GOOGLE PHOTOS INTEGRATION =============
 
-def get_google_photos_service():
-    """Get authenticated Google Drive service (for Picker API integration)"""
+def get_google_photos_credentials():
+    """Get authenticated Google Photos credentials"""
     if not GOOGLE_PHOTOS_TOKEN_FILE.exists():
         return None
 
     creds = Credentials.from_authorized_user_file(str(GOOGLE_PHOTOS_TOKEN_FILE), GOOGLE_PHOTOS_SCOPES)
-    return build('drive', 'v3', credentials=creds)
+    return creds
 
-def get_google_drive_service():
-    """Get authenticated Google Drive service"""
-    if not GOOGLE_PHOTOS_TOKEN_FILE.exists():
+def make_picker_api_request(endpoint, method='GET', params=None, json_data=None):
+    """Make a request to Google Photos Picker API"""
+    creds = get_google_photos_credentials()
+    if not creds:
         return None
 
-    creds = Credentials.from_authorized_user_file(str(GOOGLE_PHOTOS_TOKEN_FILE), GOOGLE_PHOTOS_SCOPES)
-    return build('drive', 'v3', credentials=creds)
+    headers = {
+        'Authorization': f'Bearer {creds.token}',
+        'Content-Type': 'application/json'
+    }
+
+    url = f'https://photospicker.googleapis.com/v1/{endpoint}'
+
+    if method == 'GET':
+        response = requests.get(url, headers=headers, params=params)
+    elif method == 'POST':
+        response = requests.post(url, headers=headers, json=json_data)
+    else:
+        raise ValueError(f'Unsupported method: {method}')
+
+    # Log detailed error information if request fails
+    if not response.ok:
+        logger.error(f"Google Photos Picker API Error - Status: {response.status_code}")
+        logger.error(f"Response headers: {dict(response.headers)}")
+        logger.error(f"Response body: {response.text}")
+
+    response.raise_for_status()
+    return response.json()
 
 @app.get("/api/google-photos/auth-status")
 async def get_google_photos_auth_status():
@@ -1559,7 +1627,7 @@ async def get_google_photos_auth_url():
         flow = Flow.from_client_secrets_file(
             str(GOOGLE_PHOTOS_CREDENTIALS_FILE),
             scopes=GOOGLE_PHOTOS_SCOPES,
-            redirect_uri="http://localhost:8000/api/google-photos/oauth-callback"
+            redirect_uri="http://localhost:3001/api/google-photos/oauth-callback"
         )
 
         auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
@@ -1575,7 +1643,7 @@ async def google_photos_oauth_callback(code: str = Query(...), state: str = Quer
         flow = Flow.from_client_secrets_file(
             str(GOOGLE_PHOTOS_CREDENTIALS_FILE),
             scopes=GOOGLE_PHOTOS_SCOPES,
-            redirect_uri="http://localhost:8000/api/google-photos/oauth-callback",
+            redirect_uri="http://localhost:3001/api/google-photos/oauth-callback",
             state=state
         )
 
@@ -1584,119 +1652,149 @@ async def google_photos_oauth_callback(code: str = Query(...), state: str = Quer
 
         # Save the credentials
         GOOGLE_PHOTOS_TOKEN_FILE.write_text(creds.to_json())
+        logger.info("Google Photos OAuth successful - credentials saved")
 
-        # Redirect to admin endpoint which will then redirect to frontend
-        return RedirectResponse(url="/admin", status_code=302)
+        # Redirect to frontend admin page with success parameter
+        return RedirectResponse(url="http://localhost:3000/admin?auth=success", status_code=302)
     except Exception as e:
         logger.error(f"Error in OAuth callback: {e}", exc_info=True)
-        return HTMLResponse(content=f"""
-            <html>
-                <body>
-                    <h2>✗ Authorization failed</h2>
-                    <p>Error: {str(e)}</p>
-                </body>
-            </html>
-        """, status_code=500)
+        # Redirect to frontend with error
+        return RedirectResponse(url=f"http://localhost:3000/admin?auth=error&message={str(e)}", status_code=302)
 
-@app.post("/api/google-photos/download-picker-photos")
-async def download_picker_photos(body: dict):
-    """Download photos selected from Google Picker API"""
-    service = get_google_drive_service()
-    if not service:
+@app.post("/api/google-photos/download-selected-photos")
+async def download_selected_photos(body: dict):
+    """Download photos selected from Google Photos"""
+    creds = get_google_photos_credentials()
+    if not creds:
         raise HTTPException(status_code=401, detail="Not authenticated with Google")
 
     try:
-        file_ids = body.get("file_ids", [])
-        if not file_ids:
-            raise HTTPException(status_code=400, detail="No file IDs provided")
+        # Expecting media_item_ids from Google Photos Library API
+        media_item_ids = body.get("media_item_ids", [])
+        if not media_item_ids:
+            raise HTTPException(status_code=400, detail="No media item IDs provided")
 
         downloaded_files = []
 
-        for file_id in file_ids:
+        for media_id in media_item_ids:
             try:
-                # Get file metadata
-                file = service.files().get(
-                    fileId=file_id,
-                    fields='id, name, mimeType, size, createdTime'
-                ).execute()
+                # Get media item from Google Photos Library API
+                media_item = make_google_photos_request(f'mediaItems/{media_id}')
 
-                # Skip if not an image
-                if not file.get('mimeType', '').startswith('image/'):
-                    logger.warning(f"Skipping non-image file: {file.get('name')}")
-                    continue
+                # Get the base URL for downloading
+                base_url = media_item.get('baseUrl')
+                filename = media_item.get('filename', f'photo_{media_id}.jpg')
 
-                # Download file content
-                request = service.files().get_media(fileId=file_id)
-                file_content = request.execute()
+                if base_url:
+                    # Download with full resolution
+                    download_url = f"{base_url}=d"
+                    response = requests.get(download_url)
 
-                # Save to uploads directory with timestamp
-                filename = f"{int(datetime.now().timestamp())}_{file.get('name', 'photo.jpg')}"
-                file_path = UPLOADS_DIR / filename
+                    if response.status_code == 200:
+                        # Save to uploads directory with timestamp
+                        timestamped_filename = f"{int(datetime.now().timestamp())}_{filename}"
+                        file_path = UPLOADS_DIR / timestamped_filename
 
-                with open(file_path, 'wb') as f:
-                    f.write(file_content)
+                        with open(file_path, 'wb') as f:
+                            f.write(response.content)
 
-                logger.info(f"Downloaded photo: {filename}")
-                downloaded_files.append({
-                    "id": file_id,
-                    "name": file.get('name'),
-                    "path": f"uploads/{filename}",
-                    "size": file.get('size'),
-                    "created": file.get('createdTime')
-                })
+                        logger.info(f"Downloaded photo: {timestamped_filename}")
+                        downloaded_files.append({
+                            "id": media_id,
+                            "name": filename,
+                            "path": f"uploads/{timestamped_filename}",
+                            "created": media_item.get('mediaMetadata', {}).get('creationTime')
+                        })
+                    else:
+                        logger.error(f"Failed to download {filename}: HTTP {response.status_code}")
+
             except Exception as e:
-                logger.error(f"Error downloading file {file_id}: {e}")
+                logger.error(f"Error downloading media item {media_id}: {e}")
                 continue
 
         return {
             "status": "success",
             "downloaded_count": len(downloaded_files),
             "files": downloaded_files,
-            "message": f"Successfully downloaded {len(downloaded_files)} photos from Google Drive"
+            "message": f"Successfully downloaded {len(downloaded_files)} photos from Google Photos"
         }
 
     except Exception as e:
-        logger.error(f"Error in download_picker_photos: {e}", exc_info=True)
+        logger.error(f"Error in download_selected_photos: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to download photos: {str(e)}")
 
-@app.get("/api/google-photos/albums")
-async def list_google_photos_albums():
-    """List all albums from Google Photos"""
-    service = get_google_photos_service()
-    if not service:
+@app.post("/api/google-photos/picker/create-session")
+async def create_picker_session():
+    """Create a Google Photos Picker session"""
+    creds = get_google_photos_credentials()
+    if not creds:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     try:
-        albums = []
-        next_page_token = None
+        # Create a picker session
+        response = make_picker_api_request('sessions', method='POST', json_data={})
+
+        logger.info(f"Picker session created: {response.get('id')}")
+        return {
+            "session_id": response.get('id'),
+            "picker_uri": response.get('pickerUri'),
+            "polling_config": response.get('pollingConfig', {})
+        }
+    except Exception as e:
+        logger.error(f"Error creating picker session: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create picker session: {str(e)}")
+
+@app.get("/api/google-photos/picker/session/{session_id}")
+async def get_picker_session(session_id: str):
+    """Poll a picker session to check if user has finished selecting photos"""
+    creds = get_google_photos_credentials()
+    if not creds:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        response = make_picker_api_request(f'sessions/{session_id}', method='GET')
+
+        return {
+            "session_id": response.get('id'),
+            "media_items_set": response.get('mediaItemsSet', False),
+            "picker_uri": response.get('pickerUri')
+        }
+    except Exception as e:
+        logger.error(f"Error polling picker session: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to poll picker session: {str(e)}")
+
+@app.get("/api/google-photos/picker/session/{session_id}/media-items")
+async def list_picker_media_items(session_id: str):
+    """Get media items selected by the user in a picker session"""
+    creds = get_google_photos_credentials()
+    if not creds:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        media_items = []
+        page_token = None
 
         while True:
-            results = service.albums().list(
-                pageSize=50,
-                pageToken=next_page_token
-            ).execute()
+            params = {}
+            if page_token:
+                params['pageToken'] = page_token
 
-            albums.extend(results.get('albums', []))
-            next_page_token = results.get('nextPageToken')
+            response = make_picker_api_request(f'sessions/{session_id}/mediaItems', method='GET', params=params)
 
-            if not next_page_token:
+            media_items.extend(response.get('mediaItems', []))
+            page_token = response.get('nextPageToken')
+
+            if not page_token:
                 break
 
-        return {"albums": albums, "count": len(albums)}
+        logger.info(f"Retrieved {len(media_items)} media items from picker session {session_id}")
+        return {
+            "media_items": media_items,
+            "count": len(media_items)
+        }
     except Exception as e:
-        logger.error(f"Error listing albums: {e}", exc_info=True)
-        # Return synced albums as fallback if available
-        try:
-            synced = json.loads(GOOGLE_ALBUMS_FILE.read_text()) if GOOGLE_ALBUMS_FILE.exists() else {"synced_albums": []}
-            albums_list = synced.get("synced_albums", synced.get("albums", []))
-            return {
-                "albums": albums_list,
-                "count": len(albums_list),
-                "warning": f"Could not fetch live albums from Google Photos (API limitation). Showing previously synced albums."
-            }
-        except Exception as fallback_error:
-            logger.error(f"Error returning fallback albums: {fallback_error}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Failed to list albums: {str(e)}")
+        logger.error(f"Error listing picker media items: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list media items: {str(e)}")
 
 @app.get("/api/google-photos/albums/{album_id}/photos")
 async def get_album_photos(album_id: str):

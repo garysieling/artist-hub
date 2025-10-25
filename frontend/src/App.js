@@ -4,7 +4,7 @@ import { Camera, Clock, Image, Target, Video, Upload, Plus, X, Play, Pause, Chev
 import ReactMarkdown from 'react-markdown';
 import './App.css';
 
-const API_URL = 'http://localhost:8000/api';
+const API_URL = 'http://localhost:3001/api';
 
 // Main App Component
 export default function ArtistDevHub() {
@@ -2285,12 +2285,9 @@ function ProgressAnalytics({ skills }) {
 function AdminPanel() {
   const [searchParams] = useSearchParams();
   const [authStatus, setAuthStatus] = useState(null);
-  const [albums, setAlbums] = useState([]);
   const [syncedAlbums, setSyncedAlbums] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState({});
-  const [albumsError, setAlbumsError] = useState(null);
-  const [pickerLoading, setPickerLoading] = useState(false);
 
   useEffect(() => {
     checkAuthStatus();
@@ -2302,10 +2299,6 @@ function AdminPanel() {
       const response = await fetch(`${API_URL}/google-photos/auth-status`);
       const data = await response.json();
       setAuthStatus(data);
-
-      if (data.authenticated) {
-        await loadAlbums();
-      }
     } catch (error) {
       console.error('Failed to check auth status:', error);
     } finally {
@@ -2313,21 +2306,95 @@ function AdminPanel() {
     }
   };
 
-  const loadAlbums = async () => {
+  const openGooglePhotosPicker = async () => {
     try {
-      const response = await fetch(`${API_URL}/google-photos/albums`);
+      // Create a picker session
+      const response = await fetch(`${API_URL}/google-photos/picker/create-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
       const data = await response.json();
-      if (response.ok) {
-        setAlbums(data.albums || []);
-        setAlbumsError(null);
+
+      if (!response.ok) {
+        alert(`Failed to create picker session: ${data.detail}`);
+        return;
+      }
+
+      const { session_id, picker_uri, polling_config } = data;
+
+      // Open the picker in a new window
+      const pickerWindow = window.open(picker_uri, 'GooglePhotosPicker', 'width=800,height=600');
+
+      // Poll for completion
+      const pollInterval = polling_config?.pollInterval || 5000; // Default to 5 seconds
+      const pollSession = async () => {
+        try {
+          const statusResponse = await fetch(`${API_URL}/google-photos/picker/session/${session_id}`);
+          const statusData = await statusResponse.json();
+
+          if (statusData.media_items_set) {
+            // User has finished selecting photos
+            if (pickerWindow && !pickerWindow.closed) {
+              pickerWindow.close();
+            }
+
+            // Fetch the selected media items
+            const mediaResponse = await fetch(`${API_URL}/google-photos/picker/session/${session_id}/media-items`);
+            const mediaData = await mediaResponse.json();
+
+            if (mediaData.count > 0) {
+              alert(`You selected ${mediaData.count} photos. Downloading now...`);
+              await downloadPickerPhotos(mediaData.media_items);
+            } else {
+              alert('No photos were selected.');
+            }
+          } else if (!pickerWindow || pickerWindow.closed) {
+            // User closed the window without selecting
+            console.log('Picker window closed by user');
+          } else {
+            // Continue polling
+            setTimeout(pollSession, pollInterval);
+          }
+        } catch (error) {
+          console.error('Error polling picker session:', error);
+        }
+      };
+
+      // Start polling
+      setTimeout(pollSession, pollInterval);
+
+    } catch (error) {
+      console.error('Failed to open Google Photos Picker:', error);
+      alert('Failed to open Google Photos Picker');
+    }
+  };
+
+  const downloadPickerPhotos = async (mediaItems) => {
+    try {
+      const response = await fetch(`${API_URL}/google-photos/download-selected-photos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          media_items: mediaItems.map(item => ({
+            id: item.id,
+            baseUrl: item.mediaFile?.url || item.baseUrl,
+            filename: item.filename
+          }))
+        })
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.status === 'success') {
+        alert(`Successfully downloaded ${result.downloaded_count} photos from Google Photos!`);
+        await loadSyncedAlbums();
       } else {
-        setAlbumsError(data.detail || 'Failed to load albums');
-        setAlbums([]);
+        alert(`Download completed with some errors: ${result.message || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error('Failed to load albums:', error);
-      setAlbumsError('Error loading albums. You may need to re-authenticate.');
-      setAlbums([]);
+      console.error('Failed to download photos:', error);
+      alert('Failed to download photos');
     }
   };
 
@@ -2379,78 +2446,6 @@ function AdminPanel() {
     }
   };
 
-  const openGooglePicker = async () => {
-    if (!authStatus?.authenticated) {
-      alert('Please authenticate with Google first');
-      return;
-    }
-
-    setPickerLoading(true);
-    try {
-      // Load the Picker API if not already loaded
-      if (!window.google?.picker) {
-        await new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = 'https://apis.google.com/js/picker-10.1.js';
-          script.async = true;
-          script.defer = true;
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
-      }
-
-      // Get the access token from the backend and create picker
-      const response = await fetch(`${API_URL}/google-photos/auth-status`);
-      const authData = await response.json();
-
-      // Note: In a real implementation, you'd get the actual OAuth token from the backend
-      // For now, we'll show an alert with instructions
-      // The proper implementation would require exposing the token to the frontend
-
-      // Create a simple input for demonstration
-      const fileIds = prompt(
-        'Enter Google Drive file IDs (comma-separated) that you want to download. ' +
-        'These should be image files from your Google Drive.\n\n' +
-        'Example: 1abc_DEF-123..., 2xyz_GHI-456...\n\n' +
-        'You can get file IDs by right-clicking a file in Google Drive and copying the ID.'
-      );
-
-      if (!fileIds) return;
-
-      // Parse the file IDs
-      const idArray = fileIds
-        .split(',')
-        .map(id => id.trim())
-        .filter(id => id.length > 0);
-
-      if (idArray.length === 0) {
-        alert('No valid file IDs provided');
-        return;
-      }
-
-      // Download the photos
-      const downloadResponse = await fetch(`${API_URL}/google-photos/download-picker-photos`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_ids: idArray })
-      });
-
-      const downloadData = await downloadResponse.json();
-
-      if (downloadResponse.ok) {
-        alert(`Successfully downloaded ${downloadData.downloaded_count} photos!\n\n${downloadData.message}`);
-        await loadSyncedAlbums();
-      } else {
-        alert(`Failed to download photos: ${downloadData.detail}`);
-      }
-    } catch (error) {
-      console.error('Error in Google Picker:', error);
-      alert(`Error: ${error.message || 'Failed to process Google Picker'}`);
-    } finally {
-      setPickerLoading(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -2508,31 +2503,10 @@ function AdminPanel() {
         )}
 
         {authStatus?.authenticated && (
-          <button onClick={openGooglePicker} disabled={pickerLoading} className="connect-button" style={{ marginTop: '12px', backgroundColor: '#4285f4' }}>
-            {pickerLoading ? (
-              <>
-                <div className="loading-spinner-small"></div>
-                Loading Picker...
-              </>
-            ) : (
-              <>
-                <Download size={18} />
-                Browse & Download Photos from Google Drive
-              </>
-            )}
+          <button onClick={openGooglePhotosPicker} className="connect-button" style={{ marginTop: '12px' }}>
+            <Camera size={18} />
+            Select Photos from Google Photos
           </button>
-        )}
-
-        {authStatus?.authenticated && albumsError && (
-          <div className="info-box" style={{ marginTop: '12px' }}>
-            <p style={{ marginBottom: '12px', color: '#ff9800' }}>
-              {albumsError}
-            </p>
-            <button onClick={startOAuth} className="connect-button" style={{ width: '100%' }}>
-              <Settings size={18} />
-              Re-authenticate with Google Photos
-            </button>
-          </div>
         )}
       </div>
 
@@ -2570,54 +2544,6 @@ function AdminPanel() {
         </div>
       )}
 
-      {/* Available Albums */}
-      {authStatus?.authenticated && albums.length > 0 && (
-        <div className="admin-section">
-          <h3>Available Albums ({albums.length})</h3>
-          <div className="albums-grid">
-            {albums.map(album => {
-              const isSynced = syncedAlbums.some(s => s.album_id === album.id);
-              return (
-                <div key={album.id} className="album-card">
-                  {album.coverPhotoBaseUrl && (
-                    <img
-                      src={`${album.coverPhotoBaseUrl}=w300-h300-c`}
-                      alt={album.title}
-                      className="album-cover"
-                    />
-                  )}
-                  <div className="album-info">
-                    <h4>{album.title}</h4>
-                    <p>{album.mediaItemsCount || 0} photos</p>
-                  </div>
-                  <button
-                    onClick={() => syncAlbum(album.id, album.title)}
-                    disabled={syncing[album.id]}
-                    className={`sync-button ${isSynced ? 'synced' : ''}`}
-                  >
-                    {syncing[album.id] ? (
-                      <>
-                        <div className="loading-spinner-small"></div>
-                        Syncing...
-                      </>
-                    ) : isSynced ? (
-                      <>
-                        <Check size={16} />
-                        Synced
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw size={16} />
-                        Sync Album
-                      </>
-                    )}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

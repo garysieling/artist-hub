@@ -1,0 +1,19 @@
+{
+  "image_paths": {
+    "reference": [
+      "D:\\projects\\art-models\\4",
+      "D:\\projects\\art-models\\5",
+      "D:\\projects\\art-models\\8",
+      "D:\\projects\\art-models\\reference.pictures"
+    ],
+    "photos": "D:\\projects\\art-models\\googlephotos",
+    "artwork": "D:\\projects\\art models\\my_artwork"
+  },
+  "fallback_paths": {
+    "reference": [
+      "./sample_images/reference"
+    ],
+    "photos": "./sample_images/photos",
+    "artwork": "./sample_images/artwork"
+  }
+}
