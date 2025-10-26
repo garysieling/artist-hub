@@ -25,5 +25,14 @@
     "imageCount": 16,
     "completedAt": "2025-10-25T20:11:20.777Z",
     "date": "2025-10-25"
+  },
+  {
+    "id": "1761445090625",
+    "type": "warmup",
+    "duration": 13,
+    "skills": [],
+    "imageCount": 16,
+    "completedAt": "2025-10-26T02:18:10.276Z",
+    "date": "2025-10-26"
   }
 ]

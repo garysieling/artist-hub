@@ -223,6 +223,24 @@ function DrawingWarmup({ skills }) {
   const [pauseStartTime, setPauseStartTime] = useState(null);
   const [sessionStartTime] = useState(Date.now());
 
+  // Photo filters state
+  const [photoIndex, setPhotoIndex] = useState(null);
+  const [filterSuggestions, setFilterSuggestions] = useState({
+    subject_types: [],
+    genders: [],
+    lightings: [],
+    skills: []
+  });
+  const [photoFilters, setPhotoFiltersState] = useState({
+    subjectType: 'All',
+    gender: 'All',
+    lighting: 'All',
+    skill: 'All Skills',
+    photoCollection: 'My Photos'
+  });
+  const [isContinuousMode, setIsContinuousMode] = useState(false);
+  const [continuousDuration, setContinuousDurationState] = useState(null);
+
   // Wrapper functions that update both state and URL
   const setStep = (newStep) => {
     setStepState(newStep);
@@ -244,6 +262,14 @@ function DrawingWarmup({ skills }) {
     updateURL({ imageIndex: newIndex });
   };
 
+  const setPhotoFilters = (newFilters) => {
+    setPhotoFiltersState(newFilters);
+  };
+
+  const setContinuousDuration = (newDuration) => {
+    setContinuousDurationState(newDuration);
+  };
+
   // Helper to update URL params
   const updateURL = (updates) => {
     const params = new URLSearchParams(searchParams);
@@ -257,6 +283,29 @@ function DrawingWarmup({ skills }) {
     setSearchParams(params, { replace: true });
   };
 
+  // Load photo index and filter suggestions
+  useEffect(() => {
+    const loadPhotoIndexData = async () => {
+      try {
+        const [indexRes, suggestionsRes] = await Promise.all([
+          fetch(`${API_URL}/photo-index`),
+          fetch(`${API_URL}/photo-index/filter-suggestions`)
+        ]);
+        if (indexRes.ok) {
+          const indexData = await indexRes.json();
+          setPhotoIndex(indexData);
+        }
+        if (suggestionsRes.ok) {
+          const suggestionsData = await suggestionsRes.json();
+          setFilterSuggestions(suggestionsData);
+        }
+      } catch (error) {
+        console.error('Failed to load photo index:', error);
+      }
+    };
+    loadPhotoIndexData();
+  }, []);
+
   const durationOptions = [
     { value: 5, label: '5 minutes', plan: [{ count: 10, duration: 30 }] },
     { value: 10, label: '10 minutes', plan: [{ count: 15, duration: 30 }, { count: 5, duration: 60 }] },
@@ -264,6 +313,13 @@ function DrawingWarmup({ skills }) {
     { value: 20, label: '20 minutes', plan: [{ count: 10, duration: 30 }, { count: 4, duration: 60 }, { count: 2, duration: 180 }, { count: 1, duration: 300 }] },
     { value: 30, label: '30 minutes', plan: [{ count: 10, duration: 30 }, { count: 5, duration: 60 }, { count: 3, duration: 300 }] },
     { value: 60, label: '60 minutes', plan: [{ count: 10, duration: 30 }, { count: 5, duration: 60 }, { count: 5, duration: 300 }, { count: 2, duration: 600 }] }
+  ];
+
+  const continuousOptions = [
+    { value: 0.5, label: '30 seconds' },
+    { value: 2, label: '2 minutes' },
+    { value: 3, label: '3 minutes' },
+    { value: 5, label: '5 minutes' }
   ];
 
   // Restore session from URL on mount
@@ -322,19 +378,26 @@ function DrawingWarmup({ skills }) {
   };
 
   const confirmSetup = () => {
-    const selected = durationOptions.find(opt => opt.value === duration);
-    setSessionPlan(selected.plan);
+    if (isContinuousMode) {
+      // For continuous mode, create a simple plan with just the duration
+      // The actual image loading will be infinite
+      setSessionPlan([{ count: 1, duration: Math.round(continuousDuration * 60) }]);
+    } else {
+      const selected = durationOptions.find(opt => opt.value === duration);
+      setSessionPlan(selected.plan);
+    }
     setStep('confirm');
   };
 
   const startSession = async () => {
     setLoading(true);
     try {
-      const totalCount = sessionPlan.reduce((sum, p) => sum + p.count, 0);
+      // For continuous mode, start with a batch of images. For timed mode, load the full count
+      const initialCount = isContinuousMode ? 10 : sessionPlan.reduce((sum, p) => sum + p.count, 0);
       const response = await fetch(`${API_URL}/images/warmup-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count: totalCount, skills: selectedSkills })
+        body: JSON.stringify({ count: initialCount, skills: selectedSkills })
       });
       const images = await response.json();
       setSessionImages(images);
@@ -354,21 +417,41 @@ function DrawingWarmup({ skills }) {
       return () => clearTimeout(timer);
     } else if (step === 'session' && timeRemaining === 0) {
       const totalImages = sessionPlan.reduce((sum, p) => sum + p.count, 0);
-      if (currentImageIndex + 1 < totalImages) {
-        let imagesSoFar = 0;
-        for (let plan of sessionPlan) {
-          if (currentImageIndex < imagesSoFar + plan.count) {
-            setTimeRemaining(plan.duration);
-            break;
-          }
-          imagesSoFar += plan.count;
+      if (isContinuousMode) {
+        // For continuous mode, always move to next image and reload if needed
+        const nextIndex = currentImageIndex + 1;
+
+        // Load more images when we're running low
+        if (nextIndex >= sessionImages.length - 2) {
+          fetch(`${API_URL}/images/warmup-session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ count: 10, skills: selectedSkills })
+          }).then(res => res.json()).then(newImages => {
+            setSessionImages(prev => [...prev, ...newImages]);
+          }).catch(err => console.error('Failed to load more images:', err));
         }
-        setCurrentImageIndex(currentImageIndex + 1);
+
+        setCurrentImageIndex(nextIndex);
+        setTimeRemaining(sessionPlan[0].duration);
       } else {
-        setStep('complete');
+        // For timed mode, end session when we've completed all images
+        if (currentImageIndex + 1 < totalImages) {
+          let imagesSoFar = 0;
+          for (let plan of sessionPlan) {
+            if (currentImageIndex < imagesSoFar + plan.count) {
+              setTimeRemaining(plan.duration);
+              break;
+            }
+            imagesSoFar += plan.count;
+          }
+          setCurrentImageIndex(currentImageIndex + 1);
+        } else {
+          setStep('complete');
+        }
       }
     }
-  }, [step, isPaused, timeRemaining, currentImageIndex, sessionPlan]);
+  }, [step, isPaused, timeRemaining, currentImageIndex, sessionPlan, isContinuousMode, sessionImages.length, selectedSkills]);
 
   useEffect(() => {
     if (step === 'complete') {
@@ -439,24 +522,125 @@ function DrawingWarmup({ skills }) {
           </div>
 
           <div className="section">
-            <h3 className="section-title">Focus Skills (Optional)</h3>
-            <p className="section-subtitle">Select skills to filter reference images</p>
-            <div className="skills-filter-grid">
-              {skills.map(skill => (
-                <button
-                  key={skill}
-                  onClick={() => toggleSkill(skill)}
-                  className={`skill-filter-button ${selectedSkills.includes(skill) ? 'selected' : ''}`}
+            <h3 className="section-title">Drawing Mode</h3>
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="mode"
+                  checked={!isContinuousMode}
+                  onChange={() => setIsContinuousMode(false)}
+                />
+                <span>Timed Session</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="mode"
+                  checked={isContinuousMode}
+                  onChange={() => setIsContinuousMode(true)}
+                />
+                <span>Continuous Drawing</span>
+              </label>
+            </div>
+
+            {isContinuousMode && (
+              <div>
+                <p className="section-subtitle">Select drawing duration for each image</p>
+                <div className="duration-grid">
+                  {continuousOptions.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setContinuousDuration(opt.value)}
+                      className={`duration-option ${continuousDuration === opt.value ? 'selected' : ''}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="section">
+            <h3 className="section-title">Photo Filters (Optional)</h3>
+            <p className="section-subtitle">Filter reference images by attributes</p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '500', marginBottom: '0.5rem' }}>Photo Collection</label>
+                <select
+                  value={photoFilters.photoCollection}
+                  onChange={(e) => setPhotoFilters({...photoFilters, photoCollection: e.target.value})}
+                  style={{ width: '100%', padding: '0.5rem' }}
                 >
-                  {skill}
-                </button>
-              ))}
+                  <option>My Photos</option>
+                  <option>Reference Photos</option>
+                  <option>My Art</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '500', marginBottom: '0.5rem' }}>Subject Type</label>
+                <select
+                  value={photoFilters.subjectType}
+                  onChange={(e) => setPhotoFilters({...photoFilters, subjectType: e.target.value})}
+                  style={{ width: '100%', padding: '0.5rem' }}
+                >
+                  <option>All</option>
+                  {filterSuggestions.subject_types?.map(type => (
+                    <option key={type}>{type}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '500', marginBottom: '0.5rem' }}>Gender</label>
+                <select
+                  value={photoFilters.gender}
+                  onChange={(e) => setPhotoFilters({...photoFilters, gender: e.target.value})}
+                  style={{ width: '100%', padding: '0.5rem' }}
+                >
+                  <option>All</option>
+                  {filterSuggestions.genders?.map(gender => (
+                    <option key={gender}>{gender}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '500', marginBottom: '0.5rem' }}>Lighting</label>
+                <select
+                  value={photoFilters.lighting}
+                  onChange={(e) => setPhotoFilters({...photoFilters, lighting: e.target.value})}
+                  style={{ width: '100%', padding: '0.5rem' }}
+                >
+                  <option>All</option>
+                  {filterSuggestions.lightings?.map(lighting => (
+                    <option key={lighting}>{lighting}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: '500', marginBottom: '0.5rem' }}>Skill Focus</label>
+                <select
+                  value={photoFilters.skill}
+                  onChange={(e) => setPhotoFilters({...photoFilters, skill: e.target.value})}
+                  style={{ width: '100%', padding: '0.5rem' }}
+                >
+                  <option>All Skills</option>
+                  {filterSuggestions.skills?.map(skill => (
+                    <option key={skill}>{skill}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
           <button
             onClick={confirmSetup}
-            disabled={!duration}
+            disabled={!duration && !isContinuousMode}
             className="button button-blue full-width"
           >
             Continue
@@ -548,10 +732,35 @@ function DrawingWarmup({ skills }) {
             <span className="timer">{formatTime(timeRemaining)}</span>
           </div>
           <div className="session-info">
-            <span>Image {currentImageIndex + 1} of {totalImages}</span>
-            <button onClick={() => setStep('complete')} className="button button-red">
-              End Session
-            </button>
+            <span>Image {currentImageIndex + 1} of {isContinuousMode ? '∞' : totalImages}</span>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                onClick={async () => {
+                  if (currentImage) {
+                    try {
+                      await fetch(`${API_URL}/metadata/image/mark-drawn`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          imagePath: currentImage.path,
+                          mediums: []
+                        })
+                      });
+                      alert(`✓ Image marked as drawn!`);
+                    } catch (error) {
+                      console.error('Error marking image as drawn:', error);
+                    }
+                  }
+                }}
+                className="button button-secondary"
+                style={{ fontSize: '0.85rem', padding: '0.5rem 0.75rem' }}
+              >
+                ✓ Drew This
+              </button>
+              <button onClick={() => setStep('complete')} className="button button-red">
+                End Session
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1159,6 +1368,22 @@ function PhotoFinder({ skills }) {
     skill: 'All Skills'
   });
 
+  // Photo category filter (My Photos, Reference Photos, Historical Art, My Art)
+  const [photoCategory, setPhotoCategory] = useState('My Photos');
+
+  // Image attribute analysis (for debugging indexer)
+  const [analyzedAttributes, setAnalyzedAttributes] = useState({});
+  const [analyzingImage, setAnalyzingImage] = useState(false);
+
+  // Photo index and AI-generated metadata
+  const [photoIndex, setPhotoIndex] = useState(null);
+  const [filterSuggestions, setFilterSuggestions] = useState({
+    subject_types: [],
+    genders: [],
+    lightings: [],
+    skills: []
+  });
+
   // Shopping cart states
   const [cartImages, setCartImages] = useState([]);
   const [view, setView] = useState('browse'); // 'browse' or 'paint'
@@ -1264,13 +1489,23 @@ function PhotoFinder({ skills }) {
         const searchData = await searchResponse.json();
         photosData = searchData.results || [];
       } else {
-        // Load all photos
-        const photosResponse = await fetch(`${API_URL}/images/photos`);
-        photosData = await photosResponse.json();
+        // Load photos based on category
+        if (photoCategory === 'My Photos') {
+          const photosResponse = await fetch(`${API_URL}/images/photos`);
+          photosData = await photosResponse.json();
+        } else if (photoCategory === 'Reference Photos') {
+          const refResponse = await fetch(`${API_URL}/images/reference`);
+          photosData = await refResponse.json();
+        } else if (photoCategory === 'My Art') {
+          const artworkResponse = await fetch(`${API_URL}/drawings`);
+          photosData = await artworkResponse.json();
+        } else if (photoCategory === 'Historical Art') {
+          // No results yet - placeholder for future implementation
+          photosData = [];
+        }
 
-        // Shuffle photos based on today's date (same order all day)
-        const seed = getDaySeed();
-        photosData = shuffleArrayWithSeed(photosData, seed);
+        // Shuffle photos randomly on each load
+        photosData = photosData.sort(() => Math.random() - 0.5);
       }
 
       // Apply status filter client-side
@@ -1282,6 +1517,65 @@ function PhotoFinder({ skills }) {
           } else if (filters.status === 'Not Drawn') {
             return !metadata?.drawn;
           }
+          return true;
+        });
+
+        // If showing "Already Drawn", sort by most recently drawn first
+        if (filters.status === 'Already Drawn') {
+          photosData.sort((a, b) => {
+            const drawnAtA = metadataData.images?.[a.path]?.drawnAt;
+            const drawnAtB = metadataData.images?.[b.path]?.drawnAt;
+
+            // Both have timestamps - sort by most recent first
+            if (drawnAtA && drawnAtB) {
+              return new Date(drawnAtB) - new Date(drawnAtA);
+            }
+            // One has timestamp, put it first
+            if (drawnAtA) return -1;
+            if (drawnAtB) return 1;
+            // Neither has timestamp
+            return 0;
+          });
+        }
+      }
+
+      // Apply AI-indexed metadata filters (subject type, gender, lighting, skill)
+      if (photoIndex && photoIndex.collections) {
+        const collectionName =
+          photoCategory === 'My Photos' ? 'My Photos' :
+          photoCategory === 'Reference Photos' ? 'Reference Photos' :
+          photoCategory === 'My Art' ? 'My Art' :
+          'My Photos';
+
+        const indexedMetadata = photoIndex.collections[collectionName] || {};
+
+        photosData = photosData.filter(photo => {
+          const indexed = indexedMetadata[photo.path];
+
+          // If no indexed metadata, show the photo (fallback)
+          if (!indexed) return true;
+
+          // Apply subject type filter
+          if (filters.subjectType !== 'All' && indexed.subject_type !== filters.subjectType) {
+            return false;
+          }
+
+          // Apply gender filter
+          if (filters.gender !== 'All' && indexed.gender !== filters.gender) {
+            return false;
+          }
+
+          // Apply lighting filter
+          if (filters.lighting !== 'All' && indexed.lighting !== filters.lighting) {
+            return false;
+          }
+
+          // Apply skill filter
+          if (filters.skill !== 'All Skills' &&
+              (!indexed.skills || !indexed.skills.includes(filters.skill))) {
+            return false;
+          }
+
           return true;
         });
       }
@@ -1368,6 +1662,45 @@ function PhotoFinder({ skills }) {
       console.error('Failed to mark as not drawn:', error);
       alert('Failed to save. Please try again.');
     }
+  };
+
+  const analyzeImageAttributes = async (photo) => {
+    setAnalyzingImage(true);
+    try {
+      const response = await fetch(`${API_URL}/photo-index/analyze-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imagePath: photo.path })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Analysis response:', data);
+
+      if (data.success) {
+        setAnalyzedAttributes({
+          ...analyzedAttributes,
+          [photo.path]: {
+            subject_type: data.subject_type,
+            gender: data.gender,
+            lighting: data.lighting,
+            skills: data.skills
+          }
+        });
+      } else if (data.error) {
+        throw new Error(data.error);
+      } else {
+        throw new Error(data.message || 'Unknown error');
+      }
+    } catch (error) {
+      console.error('Failed to analyze image:', error);
+      alert(`Error: ${error.message}`);
+    }
+    setAnalyzingImage(false);
   };
 
   const openPhotoModal = (photo) => {
@@ -1552,6 +1885,44 @@ function PhotoFinder({ skills }) {
   useEffect(() => {
     loadPhotos();
     checkIndexStatus();
+  }, []);
+
+  // Reload photos when photo category changes
+  useEffect(() => {
+    loadPhotos(false);
+  }, [photoCategory]);
+
+  // Reload photos when filters change
+  useEffect(() => {
+    // Only reload if photos are already loaded (to avoid loading twice on mount)
+    if (photos.length > 0) {
+      loadPhotos(false);
+    }
+  }, [filters.subjectType, filters.gender, filters.lighting, filters.skill, filters.status]);
+
+  // Load photo index and filter suggestions on component mount
+  useEffect(() => {
+    const loadPhotoIndexData = async () => {
+      try {
+        // Load the photo index
+        const indexResponse = await fetch(`${API_URL}/photo-index`);
+        if (indexResponse.ok) {
+          const index = await indexResponse.json();
+          setPhotoIndex(index);
+        }
+
+        // Load filter suggestions
+        const suggestionsResponse = await fetch(`${API_URL}/photo-index/filter-suggestions`);
+        if (suggestionsResponse.ok) {
+          const suggestions = await suggestionsResponse.json();
+          setFilterSuggestions(suggestions);
+        }
+      } catch (error) {
+        console.error('Error loading photo index data:', error);
+      }
+    };
+
+    loadPhotoIndexData();
   }, []);
 
   if (view === 'paint' && isPainting) {
@@ -1920,6 +2291,19 @@ function PhotoFinder({ skills }) {
 
         <div className="filters-grid">
           <div className="filter-group">
+            <label className="filter-label">Photo Collection</label>
+            <select
+              className="select-input"
+              value={photoCategory}
+              onChange={(e) => setPhotoCategory(e.target.value)}
+            >
+              <option>My Photos</option>
+              <option>Reference Photos</option>
+              <option>Historical Art</option>
+              <option>My Art</option>
+            </select>
+          </div>
+          <div className="filter-group">
             <label className="filter-label">Subject Type</label>
             <select
               className="select-input"
@@ -1927,10 +2311,11 @@ function PhotoFinder({ skills }) {
               onChange={(e) => setFilters({...filters, subjectType: e.target.value})}
             >
               <option>All</option>
-              <option>People</option>
-              <option>Animals</option>
-              <option>Buildings</option>
-              <option>Landscapes</option>
+              {filterSuggestions.subject_types && filterSuggestions.subject_types
+                .filter(type => type !== 'All')
+                .map(type => (
+                  <option key={type}>{type}</option>
+                ))}
             </select>
           </div>
           <div className="filter-group">
@@ -1941,8 +2326,11 @@ function PhotoFinder({ skills }) {
               onChange={(e) => setFilters({...filters, gender: e.target.value})}
             >
               <option>All</option>
-              <option>Male</option>
-              <option>Female</option>
+              {filterSuggestions.genders && filterSuggestions.genders
+                .filter(gender => gender !== 'All')
+                .map(gender => (
+                  <option key={gender}>{gender}</option>
+                ))}
             </select>
           </div>
           <div className="filter-group">
@@ -1953,10 +2341,11 @@ function PhotoFinder({ skills }) {
               onChange={(e) => setFilters({...filters, lighting: e.target.value})}
             >
               <option>All</option>
-              <option>High Contrast</option>
-              <option>Bright</option>
-              <option>Dark</option>
-              <option>Colorful</option>
+              {filterSuggestions.lightings && filterSuggestions.lightings
+                .filter(lighting => lighting !== 'All')
+                .map(lighting => (
+                  <option key={lighting}>{lighting}</option>
+                ))}
             </select>
           </div>
           <div className="filter-group">
@@ -1979,7 +2368,11 @@ function PhotoFinder({ skills }) {
               onChange={(e) => setFilters({...filters, skill: e.target.value})}
             >
               <option>All Skills</option>
-              {skills.map(skill => (
+              {/* Use AI-indexed skills if available, fallback to manual skills list */}
+              {(filterSuggestions.skills && filterSuggestions.skills.length > 0
+                ? filterSuggestions.skills
+                : skills
+              ).map(skill => (
                 <option key={skill}>{skill}</option>
               ))}
             </select>
@@ -1990,6 +2383,7 @@ function PhotoFinder({ skills }) {
           <button
             onClick={() => {
               setSearchQuery('');
+              setPhotoCategory('My Photos');
               setFilters({
                 subjectType: 'All',
                 gender: 'All',
@@ -2014,7 +2408,7 @@ function PhotoFinder({ skills }) {
           <div>
             <p className="photo-count">Found {photos.length} photos</p>
             <div className="photo-grid">
-              {photos.slice(0, 20).map((photo, idx) => {
+              {photos.slice(0, 50).map((photo, idx) => {
                 const metadata = photoMetadata[photo.path];
                 const isDrawn = metadata?.drawn === true;
                 const inCart = isImageInCart(photo);
@@ -2172,6 +2566,48 @@ function PhotoFinder({ skills }) {
                     </button>
                   </div>
                 )}
+
+                {/* Image Attributes Section (for debugging indexer) */}
+                <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e0e0e0' }}>
+                  <h4>AI Analysis (Debug)</h4>
+                  <p className="section-subtitle">Analyze image attributes with indexer</p>
+
+                  <button
+                    onClick={() => analyzeImageAttributes(selectedPhoto)}
+                    disabled={analyzingImage}
+                    className="button button-secondary full-width"
+                    style={{ marginBottom: '1rem' }}
+                  >
+                    {analyzingImage ? 'Analyzing...' : 'Analyze Attributes'}
+                  </button>
+
+                  {analyzedAttributes[selectedPhoto.path] && (
+                    <div style={{ marginTop: '1rem' }}>
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <strong>Subject Type:</strong>
+                        <p style={{ color: '#666', marginTop: '0.25rem' }}>{analyzedAttributes[selectedPhoto.path].subject_type}</p>
+                      </div>
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <strong>Gender:</strong>
+                        <p style={{ color: '#666', marginTop: '0.25rem' }}>{analyzedAttributes[selectedPhoto.path].gender}</p>
+                      </div>
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <strong>Lighting:</strong>
+                        <p style={{ color: '#666', marginTop: '0.25rem' }}>{analyzedAttributes[selectedPhoto.path].lighting}</p>
+                      </div>
+                      <div>
+                        <strong>Skills:</strong>
+                        <div style={{ marginTop: '0.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                          {analyzedAttributes[selectedPhoto.path].skills.map(skill => (
+                            <span key={skill} style={{ backgroundColor: '#f0f0f0', padding: '0.25rem 0.75rem', borderRadius: '4px', fontSize: '0.85rem' }}>
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -2730,11 +3166,59 @@ function AdminPanel() {
   const [syncedAlbums, setSyncedAlbums] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState({});
+  const [indexerStatus, setIndexerStatus] = useState(null);
+  const [indexerLoading, setIndexerLoading] = useState(false);
+  const [startingIndexer, setStartingIndexer] = useState(false);
 
   useEffect(() => {
     checkAuthStatus();
     loadSyncedAlbums();
+    loadIndexerStatus();
+
+    // Poll indexer status every 2 seconds (always, to show progress and updates)
+    const statusPoll = setInterval(loadIndexerStatus, 2000);
+    return () => clearInterval(statusPoll);
   }, [searchParams]);
+
+  const loadIndexerStatus = async () => {
+    try {
+      const response = await fetch(`${API_URL}/indexer-status`);
+      const data = await response.json();
+      setIndexerStatus(data);
+    } catch (error) {
+      console.error('Failed to load indexer status:', error);
+    }
+  };
+
+  const startIndexer = async () => {
+    try {
+      setStartingIndexer(true);
+      const response = await fetch(`${API_URL}/indexer/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        alert(`Failed to start indexer: ${errorData.detail || response.statusText}`);
+        return;
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        alert('Photo indexer started! Indexing will run in the background. Check status below for progress.');
+        // Load status immediately
+        await loadIndexerStatus();
+      } else {
+        alert(`Failed to start indexer: ${data.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Failed to start indexer:', error);
+      alert('Failed to start indexer. Check console for details.');
+    } finally {
+      setStartingIndexer(false);
+    }
+  };
 
   const checkAuthStatus = async () => {
     try {
@@ -2915,6 +3399,86 @@ function AdminPanel() {
           <ChevronLeft size={20} />
           Back to Dashboard
         </button>
+      </div>
+
+      {/* Photo Indexer Status */}
+      <div className="admin-section">
+        <h3>Photo Indexer Status</h3>
+
+        {indexerStatus && (
+          <div className={`indexer-status-box ${indexerStatus.isRunning ? 'status-running' : 'status-idle'}`}>
+            {indexerStatus.isRunning ? (
+              <>
+                <div className="status-indicator running"></div>
+                <div className="status-info">
+                  <div className="status-title">Indexing in Progress</div>
+                  <div className="status-collection">{indexerStatus.collection}</div>
+                  <div className="status-progress">
+                    <div className="progress-bar">
+                      <div className="progress-fill" style={{ width: `${indexerStatus.percentage}%` }}></div>
+                    </div>
+                    <div className="progress-text">
+                      {indexerStatus.current} / {indexerStatus.total} images ({indexerStatus.percentage}%)
+                    </div>
+                  </div>
+                  {indexerStatus.currentImage && (
+                    <div className="current-image">Current: {indexerStatus.currentImage}</div>
+                  )}
+                  {indexerStatus.updatedAt && (
+                    <div className="updated-at">Last updated: {new Date(indexerStatus.updatedAt).toLocaleTimeString()}</div>
+                  )}
+                  {indexerStatus.estimatedTimeRemainingFormatted && (
+                    <div className="estimated-time">Estimated time remaining: {indexerStatus.estimatedTimeRemainingFormatted}</div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="status-indicator idle"></div>
+                <div className="status-info">
+                  <div className="status-title">Indexer Idle</div>
+                  <div className="status-message">{indexerStatus.message || 'No indexing process running'}</div>
+                  {indexerStatus.completedAt && (
+                    <div className="last-indexed">Last Indexed: {new Date(indexerStatus.completedAt).toLocaleString()}</div>
+                  )}
+                  {indexerStatus.averageDurationFormatted && (
+                    <div className="execution-stats">
+                      <div className="stat-row">
+                        <span className="stat-label">Average time:</span>
+                        <span className="stat-value">{indexerStatus.averageDurationFormatted}</span>
+                      </div>
+                      {indexerStatus.executionHistory && indexerStatus.executionHistory.length > 0 && (
+                        <div className="execution-history">
+                          <div className="stat-label">Last {indexerStatus.executionHistory.length} runs:</div>
+                          {indexerStatus.executionHistory.map((run, idx) => (
+                            <div key={idx} className="history-item">
+                              {run.durationFormatted} - {new Date(run.completedAt).toLocaleDateString()}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={startIndexer}
+                    disabled={startingIndexer}
+                    className="button button-primary"
+                    style={{ marginTop: '12px' }}
+                  >
+                    {startingIndexer ? (
+                      <>
+                        <div className="loading-spinner-small"></div>
+                        Starting...
+                      </>
+                    ) : (
+                      <>Start Photo Indexing</>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Google Photos Connection Status */}

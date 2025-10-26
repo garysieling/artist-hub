@@ -111,6 +111,7 @@ CRITIQUES_FILE = DATA_DIR / "critiques.json"
 PRACTICE_SESSIONS_FILE = DATA_DIR / "practice_sessions.json"
 DRAWINGS_FILE = DATA_DIR / "drawings.json"
 IMAGE_INDEX_FILE = DATA_DIR / "image_index.json"
+PHOTO_INDEX_FILE = DATA_DIR / "photo_index.json"
 EMBEDDINGS_FILE = DATA_DIR / "embeddings.npy"
 GOOGLE_PHOTOS_CREDENTIALS_FILE = DATA_DIR / "google_auth.json"
 GOOGLE_PHOTOS_TOKEN_FILE = DATA_DIR / "google_photos_token.json"
@@ -377,6 +378,27 @@ def get_clip_model():
         logger.info(f"CLIP model loaded on {device}")
 
     return _clip_processor, _clip_model
+
+# Photo index for AI-generated metadata (lazy loading)
+_photo_index = None
+
+def load_photo_index():
+    """Load the photo index with AI-generated metadata"""
+    global _photo_index
+
+    if _photo_index is None:
+        if PHOTO_INDEX_FILE.exists():
+            try:
+                _photo_index = json.loads(PHOTO_INDEX_FILE.read_text())
+                logger.info(f"Loaded photo index with {len(_photo_index.get('collections', {}))} collections")
+            except Exception as e:
+                logger.warning(f"Error loading photo index: {e}")
+                _photo_index = {"metadata": {}, "collections": {}}
+        else:
+            logger.info("Photo index not found. Run 'python photo_indexer.py' to generate it.")
+            _photo_index = {"metadata": {}, "collections": {}}
+
+    return _photo_index
 
 def get_image_embedding(image_path: str) -> np.ndarray:
     """Generate CLIP embedding for an image"""
@@ -1575,6 +1597,95 @@ async def update_image_metadata(data: ImageMetadata):
     METADATA_FILE.write_text(json.dumps(metadata, indent=2))
     return {"success": True}
 
+@app.post("/api/metadata/image/mark-drawn")
+async def mark_image_as_drawn(data: dict):
+    """Mark an image as drawn with timestamp (for warmup sessions)"""
+    image_path = data.get("imagePath")
+    mediums = data.get("mediums", [])
+
+    if not image_path:
+        raise HTTPException(status_code=400, detail="imagePath required")
+
+    metadata = json.loads(METADATA_FILE.read_text())
+
+    if "images" not in metadata:
+        metadata["images"] = {}
+
+    # Update image metadata with drawn status and timestamp
+    drawn_at = datetime.now().isoformat()
+    metadata["images"][image_path] = {
+        **metadata["images"].get(image_path, {}),
+        "drawn": True,
+        "drawnAt": drawn_at,
+        "mediums": mediums,
+        "updatedAt": drawn_at
+    }
+
+    METADATA_FILE.write_text(json.dumps(metadata, indent=2))
+
+    return {
+        "success": True,
+        "imagePath": image_path,
+        "drawnAt": drawn_at,
+        "message": f"Image marked as drawn at {drawn_at}"
+    }
+
+@app.post("/api/photo-index/analyze-image")
+async def analyze_single_image(data: dict):
+    """Analyze a single image using the indexer's AI models (for debugging/testing)"""
+    image_path = data.get("imagePath")
+
+    if not image_path:
+        raise HTTPException(status_code=400, detail="imagePath required")
+
+    # Verify the file exists and is within allowed paths
+    full_path = Path(image_path)
+    if not full_path.exists():
+        # Try with base paths
+        found = False
+        for base_path in IMAGE_PATHS.values():
+            if isinstance(base_path, list):
+                for p in base_path:
+                    candidate = Path(p) / image_path
+                    if candidate.exists():
+                        full_path = candidate
+                        found = True
+                        break
+            else:
+                candidate = Path(base_path) / image_path
+                if candidate.exists():
+                    full_path = candidate
+                    found = True
+                    break
+
+        if not found:
+            raise HTTPException(status_code=404, detail=f"Image not found: {image_path}")
+
+    try:
+        # Import and use the ImageAnalyzer from photo_indexer
+        from photo_indexer import ImageAnalyzer
+
+        analyzer = ImageAnalyzer()
+        metadata = analyzer.analyze_image(str(full_path))
+
+        return {
+            "success": True,
+            "imagePath": image_path,
+            "metadata": metadata,
+            "subject_type": metadata.get("subject_type"),
+            "gender": metadata.get("gender"),
+            "lighting": metadata.get("lighting"),
+            "skills": metadata.get("skills")
+        }
+    except Exception as e:
+        logger.error(f"Error analyzing image {image_path}: {e}")
+        return {
+            "success": False,
+            "imagePath": image_path,
+            "error": str(e),
+            "message": "Failed to analyze image"
+        }
+
 # ============= VIDEO PROCESSING ENDPOINTS =============
 
 @app.post("/api/video/extract-frames")
@@ -1626,6 +1737,199 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     return {"status": "ok", "message": "Artist Development Hub Python API is running"}
+
+# ============= PHOTO INDEX ENDPOINTS =============
+
+@app.get("/api/photo-index")
+async def get_photo_index():
+    """Get the complete photo index with AI-generated metadata"""
+    index = load_photo_index()
+    return index
+
+@app.get("/api/photo-index/metadata/{image_path:path}")
+async def get_image_metadata(image_path: str):
+    """Get AI-generated metadata for a specific image"""
+    index = load_photo_index()
+    collections = index.get('collections', {})
+
+    # Search through all collections
+    for collection_name, images in collections.items():
+        if image_path in images:
+            return {
+                "path": image_path,
+                "collection": collection_name,
+                "metadata": images[image_path]
+            }
+
+    # If not found in index, return default metadata
+    return {
+        "path": image_path,
+        "collection": None,
+        "metadata": {
+            "subject_type": "All",
+            "gender": "All",
+            "lighting": "All",
+            "skills": []
+        }
+    }
+
+@app.get("/api/photo-index/filter-suggestions")
+async def get_filter_suggestions():
+    """Get all unique filter values from the photo index"""
+    index = load_photo_index()
+    collections = index.get('collections', {})
+
+    subject_types = set()
+    genders = set()
+    lightings = set()
+    skills = set()
+
+    for collection_name, images in collections.items():
+        for image_path, metadata in images.items():
+            if metadata.get('subject_type'):
+                subject_types.add(metadata['subject_type'])
+            if metadata.get('gender'):
+                genders.add(metadata['gender'])
+            if metadata.get('lighting'):
+                lightings.add(metadata['lighting'])
+            if metadata.get('skills'):
+                skills.update(metadata['skills'])
+
+    return {
+        "subject_types": sorted(list(subject_types)),
+        "genders": sorted(list(genders)),
+        "lightings": sorted(list(lightings)),
+        "skills": sorted(list(skills))
+    }
+
+@app.get("/api/photo-index/stats")
+async def get_photo_index_stats():
+    """Get statistics about the photo index"""
+    index = load_photo_index()
+    collections = index.get('collections', {})
+
+    stats = {
+        "total_images": 0,
+        "total_collections": len(collections),
+        "collections": {}
+    }
+
+    for collection_name, images in collections.items():
+        count = len(images)
+        stats['total_images'] += count
+        stats['collections'][collection_name] = {
+            "count": count,
+            "metadata_generated": index.get('metadata', {})
+        }
+
+    return stats
+
+@app.get("/api/indexer-status")
+async def get_indexer_status():
+    """Get the current status of the running photo indexer"""
+    from datetime import datetime, timedelta
+
+    status_file = Path(__file__).parent / "data" / "indexer_status.json"
+    history_file = Path(__file__).parent / "data" / "indexer_history.json"
+
+    response = {
+        "isRunning": False,
+        "collection": None,
+        "current": 0,
+        "total": 0,
+        "percentage": 0,
+        "currentImage": None,
+        "updatedAt": None,
+        "completedAt": None,
+        "estimatedTimeRemaining": None,
+        "estimatedTimeRemainingFormatted": None,
+        "executionHistory": None,
+        "averageDuration": None,
+        "averageDurationFormatted": None,
+        "message": "No indexer running"
+    }
+
+    try:
+        # Load status
+        if status_file.exists():
+            with open(status_file, 'r') as f:
+                status = json.load(f)
+            response.update(status)
+
+        # Load execution history
+        if history_file.exists():
+            with open(history_file, 'r') as f:
+                history = json.load(f)
+            response["executionHistory"] = history.get("executions", [])
+            response["averageDuration"] = history.get("averageDurationSeconds")
+            response["averageDurationFormatted"] = history.get("averageDurationFormatted")
+
+        # Calculate estimated time remaining if running
+        if response["isRunning"] and response["total"] > 0 and response["current"] > 0:
+            if response["averageDuration"]:
+                # Use historical average to estimate
+                images_remaining = response["total"] - response["current"]
+                estimated_seconds = images_remaining * (response["averageDuration"] / response["total"])
+                response["estimatedTimeRemaining"] = round(estimated_seconds, 0)
+                response["estimatedTimeRemainingFormatted"] = _format_duration(estimated_seconds)
+
+        return response
+    except Exception as e:
+        logger.error(f"Error reading indexer status: {e}")
+        response["error"] = str(e)
+        return response
+
+
+def _format_duration(seconds: float) -> str:
+    """Format duration in seconds to human-readable string"""
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    elif seconds < 3600:
+        minutes = seconds / 60
+        return f"{minutes:.1f}m"
+    else:
+        hours = seconds / 3600
+        return f"{hours:.1f}h"
+
+@app.post("/api/indexer/start")
+async def start_indexer():
+    """Start the photo indexer in the background"""
+    import subprocess
+    import sys
+
+    try:
+        # Start the indexer as a background process
+        indexer_path = Path(__file__).parent / "photo_indexer.py"
+
+        # Use subprocess to run indexer in background
+        if sys.platform == "win32":
+            # Windows: use subprocess with CREATE_NO_WINDOW
+            subprocess.Popen(
+                ["python", str(indexer_path)],
+                cwd=str(Path(__file__).parent),
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+            )
+        else:
+            # Unix: use subprocess with stdout/stderr redirection
+            subprocess.Popen(
+                ["python", str(indexer_path)],
+                cwd=str(Path(__file__).parent),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True
+            )
+
+        logger.info("Photo indexer started in background")
+        return {
+            "success": True,
+            "message": "Photo indexer started. Check status below for progress."
+        }
+    except Exception as e:
+        logger.error(f"Failed to start indexer: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 # ============= GOOGLE PHOTOS INTEGRATION =============
 

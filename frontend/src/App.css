@@ -3034,3 +3034,67 @@ body {
   color: #666;
   padding: 2rem 0;
 }
+
+/* Indexer Status Styling */
+.last-indexed {
+  font-size: 0.875rem;
+  color: #9ca3af;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(156, 163, 175, 0.2);
+}
+
+.estimated-time {
+  font-size: 0.875rem;
+  color: #fbbf24;
+  margin-top: 0.5rem;
+  font-weight: 500;
+}
+
+.execution-stats {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(156, 163, 175, 0.2);
+  font-size: 0.875rem;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.stat-label {
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.stat-value {
+  color: #f3f4f6;
+  font-weight: 600;
+}
+
+.execution-history {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(156, 163, 175, 0.15);
+}
+
+.execution-history .stat-label {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.375rem 0;
+  color: #9ca3af;
+  font-size: 0.8125rem;
+}
+
+.history-item:nth-child(even) {
+  background-color: rgba(156, 163, 175, 0.05);
+  padding: 0.375rem 0.25rem;
+}

@@ -36,7 +36,8 @@
       "Bash(npm install:*)",
       "Bash(npx playwright install)",
       "Bash(awk:*)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
