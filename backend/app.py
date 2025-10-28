@@ -1139,6 +1139,8 @@ async def upload_drawing(
 ):
     """Upload a new drawing for critique"""
     try:
+        from exif_extractor import get_metadata_with_fallback
+
         # Generate unique ID for drawing
         drawing_id = str(int(datetime.now().timestamp() * 1000))
 
@@ -1150,10 +1152,13 @@ async def upload_drawing(
         with file_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
+        # Extract EXIF metadata from the image
+        exif_data = get_metadata_with_fallback(str(file_path))
+
         # Load drawings database
         drawings = json.loads(DRAWINGS_FILE.read_text())
 
-        # Create drawing record
+        # Create drawing record with EXIF data
         new_drawing = {
             "id": drawing_id,
             "filename": filename,
@@ -1161,24 +1166,230 @@ async def upload_drawing(
             "originalName": file.filename,
             "comment": comment or "",
             "uploadedAt": datetime.now().isoformat(),
-            "critique": None
+            "critique": None,
+            "exifData": exif_data
         }
 
         drawings.append(new_drawing)
         DRAWINGS_FILE.write_text(json.dumps(drawings, indent=2))
 
-        logger.info(f"Drawing uploaded: {drawing_id}")
+        # Also store in metadata.json for artwork
+        metadata = json.loads(METADATA_FILE.read_text())
+        if "artwork" not in metadata:
+            metadata["artwork"] = {}
+
+        metadata["artwork"][str(file_path)] = {
+            "exifData": exif_data,
+            "uploadedAt": datetime.now().isoformat(),
+            "originalName": file.filename
+        }
+
+        METADATA_FILE.write_text(json.dumps(metadata, indent=2))
+
+        logger.info(f"Drawing uploaded: {drawing_id} with EXIF data: {exif_data}")
         return {"success": True, "drawing": new_drawing}
 
     except Exception as e:
         logger.error(f"Error uploading drawing: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/drawings/upload-zip")
+async def upload_drawings_from_zip(
+    file: UploadFile = File(...),
+    comment: Optional[str] = None
+):
+    """Upload multiple drawings from a ZIP file with duplicate detection"""
+    try:
+        from exif_extractor import get_metadata_with_fallback
+        from file_deduplicator import check_and_register
+        import io
+
+        if not file.filename.lower().endswith('.zip'):
+            raise HTTPException(status_code=400, detail="File must be a ZIP archive")
+
+        # Create a temporary directory for extraction
+        temp_dir = Path(tempfile.mkdtemp())
+        zip_path = temp_dir / file.filename
+
+        # Save the ZIP file temporarily
+        with zip_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Extract ZIP file
+        uploaded_drawings = []
+        skipped_drawings = []
+
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            for file_info in zip_ref.filelist:
+                # Skip directories and non-image files
+                if file_info.is_dir():
+                    continue
+
+                filename_lower = file_info.filename.lower()
+                if not any(filename_lower.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']):
+                    continue
+
+                # Extract file to temporary location
+                temp_file_path = temp_dir / file_info.filename
+
+                # Create subdirectories if needed
+                temp_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Extract the file
+                with zip_ref.open(file_info) as source, temp_file_path.open("wb") as target:
+                    shutil.copyfileobj(source, target)
+
+                # Check for duplicates using file hash
+                is_duplicate, original_filename, file_hash = check_and_register(str(temp_file_path))
+
+                if is_duplicate:
+                    logger.info(f"Skipping duplicate: {file_info.filename} (matches {original_filename})")
+                    skipped_drawings.append({
+                        "filename": file_info.filename,
+                        "reason": "duplicate",
+                        "original": original_filename,
+                        "hash": file_hash
+                    })
+                    continue
+
+                # Process the file
+                drawing_id = str(int(datetime.now().timestamp() * 1000))
+
+                # Save the file to uploads directory
+                file_extension = Path(file_info.filename).suffix
+                filename = f"{drawing_id}{file_extension}"
+                file_path = UPLOADS_DIR / filename
+
+                # Copy from temp location to uploads directory
+                shutil.copy2(str(temp_file_path), str(file_path))
+
+                # Extract EXIF metadata
+                exif_data = get_metadata_with_fallback(str(file_path))
+
+                # Load drawings database
+                drawings = json.loads(DRAWINGS_FILE.read_text())
+
+                # Create drawing record
+                new_drawing = {
+                    "id": drawing_id,
+                    "filename": filename,
+                    "path": str(file_path),
+                    "originalName": file_info.filename,
+                    "comment": comment or "",
+                    "uploadedAt": datetime.now().isoformat(),
+                    "critique": None,
+                    "exifData": exif_data
+                }
+
+                drawings.append(new_drawing)
+                DRAWINGS_FILE.write_text(json.dumps(drawings, indent=2))
+
+                # Store in metadata.json
+                metadata = json.loads(METADATA_FILE.read_text())
+                if "artwork" not in metadata:
+                    metadata["artwork"] = {}
+
+                metadata["artwork"][str(file_path)] = {
+                    "exifData": exif_data,
+                    "uploadedAt": datetime.now().isoformat(),
+                    "originalName": file_info.filename,
+                    "fileHash": file_hash
+                }
+
+                METADATA_FILE.write_text(json.dumps(metadata, indent=2))
+
+                uploaded_drawings.append(new_drawing)
+                logger.info(f"Drawing uploaded from ZIP: {drawing_id}")
+
+        # Clean up temporary directory
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+        return {
+            "success": True,
+            "uploaded": len(uploaded_drawings),
+            "skipped": len(skipped_drawings),
+            "drawings": uploaded_drawings,
+            "skipped_details": skipped_drawings
+        }
+
+    except Exception as e:
+        logger.error(f"Error uploading drawings from ZIP: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/drawings")
 async def get_drawings():
     """Get all uploaded drawings"""
     drawings = json.loads(DRAWINGS_FILE.read_text())
     return drawings
+
+@app.get("/api/drawings/years")
+async def get_drawing_years():
+    """Get all unique years from drawings with counts"""
+    drawings = json.loads(DRAWINGS_FILE.read_text())
+
+    years_data = {}
+    for drawing in drawings:
+        draw_year = None
+        if "exifData" in drawing and drawing["exifData"]:
+            draw_year = drawing["exifData"].get("year")
+
+        if draw_year:
+            if draw_year not in years_data:
+                years_data[draw_year] = {"count": 0, "thumbnail": None}
+            years_data[draw_year]["count"] += 1
+            # Store first drawing as thumbnail
+            if not years_data[draw_year]["thumbnail"]:
+                years_data[draw_year]["thumbnail"] = drawing.get("filename")
+
+    return {
+        "success": True,
+        "years": years_data,
+        "sorted_years": sorted(list(years_data.keys()), reverse=True)
+    }
+
+@app.get("/api/drawings/filter/by-year")
+async def filter_drawings_by_year(year: int = None):
+    """Filter drawings by year extracted from EXIF data or filename"""
+    drawings = json.loads(DRAWINGS_FILE.read_text())
+
+    if year is None:
+        # Return all years available and their counts
+        years = {}
+        for drawing in drawings:
+            # Try to get year from exifData
+            draw_year = None
+            if "exifData" in drawing and drawing["exifData"]:
+                draw_year = drawing["exifData"].get("year")
+
+            if draw_year:
+                if draw_year not in years:
+                    years[draw_year] = []
+                years[draw_year].append(drawing)
+
+        return {
+            "success": True,
+            "years": years,
+            "available_years": sorted(list(years.keys()), reverse=True)
+        }
+
+    # Filter by specific year
+    filtered = []
+    for drawing in drawings:
+        # Try to get year from exifData
+        draw_year = None
+        if "exifData" in drawing and drawing["exifData"]:
+            draw_year = drawing["exifData"].get("year")
+
+        if draw_year and int(draw_year) == year:
+            filtered.append(drawing)
+
+    return {
+        "success": True,
+        "year": year,
+        "count": len(filtered),
+        "drawings": filtered
+    }
 
 @app.get("/api/drawings/{drawing_id}")
 async def get_drawing_detail(drawing_id: str):
@@ -2421,9 +2632,19 @@ if frontend_build_path.exists():
 
 def lookup_color_by_name(color_name: str) -> Optional[Dict[str, Any]]:
     """
-    Try to find RGB values for a color name using webcolors library.
+    Try to find RGB values for a color name using webcolors library or pigment codes.
+    Supports standard CSS color names, HTML4 colors, and art pigment codes (PY, PR, PB, etc).
     Returns dict with rgb values if found, None otherwise.
     """
+    # Try pigment codes first
+    try:
+        from pigments import lookup_pigment_code
+        pigment_result = lookup_pigment_code(color_name)
+        if pigment_result:
+            return pigment_result
+    except ImportError:
+        pass
+
     try:
         # Try CSS3 colors first
         rgb = webcolors.name_to_rgb(color_name.lower())
@@ -2530,6 +2751,58 @@ async def lookup_color(request: dict):
         return {"success": True, "rgb": rgb, "source": "color_name"}
 
     return {"success": False, "error": "Color not found"}
+
+
+@app.get("/api/pigments/search")
+async def search_pigments(query: str):
+    """Search pigments by color name (e.g., 'yellow', 'red', 'blue')"""
+    try:
+        from pigment_search import search_pigments_by_color
+        results = search_pigments_by_color(query)
+        return {"success": True, "query": query, "results": results}
+    except Exception as e:
+        logger.error(f"Error searching pigments: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/pigments/all")
+async def get_all_pigments():
+    """Get all pigments organized by color family"""
+    try:
+        from pigment_search import get_all_pigments_by_family
+        organized = get_all_pigments_by_family()
+        return {"success": True, "pigments": organized}
+    except Exception as e:
+        logger.error(f"Error getting all pigments: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/pigments/lookup/{pigment_code}")
+async def lookup_pigment(pigment_code: str):
+    """Look up a specific pigment code and return its RGB value"""
+    try:
+        from pigments import lookup_pigment_code
+        result = lookup_pigment_code(pigment_code)
+
+        if result:
+            hex_color = f"#{result['r']:02x}{result['g']:02x}{result['b']:02x}".upper()
+            return {
+                "success": True,
+                "code": pigment_code,
+                "rgb": result,
+                "hex": hex_color,
+                "valid": True
+            }
+        else:
+            return {
+                "success": False,
+                "code": pigment_code,
+                "valid": False,
+                "message": f"Pigment code '{pigment_code}' not found"
+            }
+    except Exception as e:
+        logger.error(f"Error looking up pigment {pigment_code}: {e}")
+        return {"success": False, "error": str(e)}
 
 @app.post("/api/google-photos/picker/import-to-category")
 async def import_picker_to_category(body: dict):

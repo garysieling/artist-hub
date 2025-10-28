@@ -1,1 +1,231 @@
-[]
+[
+  {
+    "id": "1761612830557",
+    "filename": "1761612830557.jpg",
+    "path": "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761612830557.jpg",
+    "originalName": "PXL_20250831_133220204.MP.jpg",
+    "comment": "",
+    "uploadedAt": "2025-10-27T20:53:50.558359",
+    "critique": {
+      "description": "This landscape format artwork (1722x1296 pixels) depicts a black and white drawing of a piano. The piece exhibits moderate contrast with bright overall tonality. The color palette leans toward warm tones, creating a specific atmospheric quality.",
+      "composition": "**Spatial Arrangement**: describe where objects are positioned in this image and how they relate to each other objects The horizontal format creates lateral visual movement, guiding the eye across the composition. This orientation naturally emphasizes breadth and expanse, ideal for panoramic views or narrative sequences. describe the composition and arrangement of elements in this artwork charcoal charcoal charcoal charcoal charcoal charcoal charcoal charcoal charcoal charcoal charcoal charcoal charcoal charcoal charcoal charcoal charcoal charcoal",
+      "mood": "**Emotional Quality**: what is the mood and emotional quality of this artwork?????????????????? **Atmospheric Presence**: describe the atmosphere and feeling this image conveys the feeling and feeling of the human body in the human body The warm color palette (reds, oranges, yellows) creates feelings of energy, passion, and vitality. Warm tones tend to advance visually, creating intimacy and emotional intensity. The moderate contrast balances visual interest with harmony, creating an accessible and engaging mood. The bright tonality suggests optimism, clarity, or ethereal qualities.",
+      "analysis": "**Value & Contrast**: The artwork demonstrates moderate contrast, with bright values that maintain visual harmony.",
+      "interpretation": "The artist appears to be exploring what themes or ideas does this artwork explore the artist's perspective on what he wants to do?. The compositional choices work in concert with the color palette and mood to suggest deeper meaning. The work invites viewers to engage with both its formal qualities and implied narrative content, creating a dialogue between visual presentation and conceptual interpretation.",
+      "judgment": "This artwork demonstrates technical competence and thoughtful composition. **Strengths**: effective use of value contrast to create depth and focal points; clear understanding of foundational design principles; thoughtful integration of mood and composition. **Areas for Growth**: continued experimentation with personal artistic voice and unique stylistic choices. The piece successfully communicates through visual means and shows promise for further artistic development. Continued practice with observational studies and experimental techniques will help refine the artist's unique perspective."
+    },
+    "critiqueGeneratedAt": "2025-10-27T20:56:25.268508"
+  },
+  {
+    "id": "1761615218206",
+    "filename": "1761615218206.jpg",
+    "path": "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615218206.jpg",
+    "originalName": "PXL_20210228_213008897.jpg",
+    "comment": "",
+    "uploadedAt": "2025-10-27T21:33:38.271471",
+    "critique": {
+      "description": "This landscape format artwork (4032x3024 pixels) depicts a painting on a piece of paper on a table. The piece exhibits high contrast with bright overall tonality. The color palette leans toward warm tones, creating a specific atmospheric quality.",
+      "composition": "**Spatial Arrangement**: describe where objects are positioned in this image and how they relate to each other objects The horizontal format creates lateral visual movement, guiding the eye across the composition. This orientation naturally emphasizes breadth and expanse, ideal for panoramic views or narrative sequences. describe the composition and arrangement of elements in this artwork",
+      "mood": "**Emotional Quality**: what is the mood and emotional quality of this artwork?????????????????? **Atmospheric Presence**: describe the atmosphere and feeling this image conveys the feeling and feeling of the artist's work The warm color palette (reds, oranges, yellows) creates feelings of energy, passion, and vitality. Warm tones tend to advance visually, creating intimacy and emotional intensity. The high contrast creates dramatic tension and emotional impact, suggesting conflict, dynamism, or strong emotional states. The bright tonality suggests optimism, clarity, or ethereal qualities.",
+      "analysis": "**Value & Contrast**: The artwork demonstrates high contrast, with bright values that create dramatic focal points.",
+      "interpretation": "The artist appears to be exploring what themes or ideas does this artwork explore the artist's mind. The compositional choices work in concert with the color palette and mood to suggest deeper meaning. The work invites viewers to engage with both its formal qualities and implied narrative content, creating a dialogue between visual presentation and conceptual interpretation.",
+      "judgment": "This artwork demonstrates technical competence and thoughtful composition. **Strengths**: effective use of value contrast to create depth and focal points; clear understanding of foundational design principles; thoughtful integration of mood and composition. **Areas for Growth**: continued experimentation with personal artistic voice and unique stylistic choices. The piece successfully communicates through visual means and shows promise for further artistic development. Continued practice with observational studies and experimental techniques will help refine the artist's unique perspective."
+    },
+    "exifData": {
+      "year": 2021,
+      "dateTime": "2021:02:28 16:30:08",
+      "camera": "Pixel 3a",
+      "make": "Google",
+      "software": "HDR+ 1.0.352609463zd",
+      "hasExif": true
+    },
+    "critiqueGeneratedAt": "2025-10-27T21:40:05.187949"
+  },
+  {
+    "id": "1761615226693",
+    "filename": "1761615226693.jpg",
+    "path": "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615226693.jpg",
+    "originalName": "IMG_20200518_175938.jpg",
+    "comment": "",
+    "uploadedAt": "2025-10-27T21:33:46.710830",
+    "critique": null,
+    "exifData": {
+      "year": 2020,
+      "dateTime": "2020:05:18 17:59:38",
+      "camera": "Pixel 3a",
+      "make": "Google",
+      "software": "HDR+ 1.0.300173574zdh",
+      "hasExif": true
+    }
+  },
+  {
+    "id": "1761615234465",
+    "filename": "1761615234465.jpg",
+    "path": "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615234465.jpg",
+    "originalName": "IMG_20200526_124158.jpg",
+    "comment": "",
+    "uploadedAt": "2025-10-27T21:33:54.484160",
+    "critique": null,
+    "exifData": {
+      "year": 2020,
+      "dateTime": "2020:05:26 12:41:58",
+      "camera": "Pixel 3a",
+      "make": "Google",
+      "software": "HDR+ 1.0.300173574zdh",
+      "hasExif": true
+    }
+  },
+  {
+    "id": "1761615241499",
+    "filename": "1761615241499.jpg",
+    "path": "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615241499.jpg",
+    "originalName": "IMG_20200425_164005.jpg",
+    "comment": "",
+    "uploadedAt": "2025-10-27T21:34:01.523223",
+    "critique": null,
+    "exifData": {
+      "year": 2020,
+      "dateTime": "2020:04:25 16:40:05",
+      "camera": "Pixel 3a",
+      "make": "Google",
+      "software": "HDR+ 1.0.300173574zdh",
+      "hasExif": true
+    }
+  },
+  {
+    "id": "1761615251246",
+    "filename": "1761615251246.jpg",
+    "path": "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615251246.jpg",
+    "originalName": "PXL_20210531_013848084.jpg",
+    "comment": "",
+    "uploadedAt": "2025-10-27T21:34:11.266982",
+    "critique": null,
+    "exifData": {
+      "year": 2021,
+      "dateTime": "2021:05:30 21:38:48",
+      "camera": "Pixel 3a",
+      "make": "Google",
+      "software": "HDR+ 1.0.362396382zd",
+      "hasExif": true
+    }
+  },
+  {
+    "id": "1761615259925",
+    "filename": "1761615259925.jpg",
+    "path": "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615259925.jpg",
+    "originalName": "PXL_20220623_125156476.MP.jpg",
+    "comment": "",
+    "uploadedAt": "2025-10-27T21:34:19.947486",
+    "critique": null,
+    "exifData": {
+      "year": 2022,
+      "dateTime": "2022:06:23 08:51:56",
+      "camera": "Pixel 3a",
+      "make": "Google",
+      "software": "HDR+ 1.0.440402506zd",
+      "hasExif": true
+    }
+  },
+  {
+    "id": "1761615266055",
+    "filename": "1761615266055.jpg",
+    "path": "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615266055.jpg",
+    "originalName": "IMG_20200510_120122.jpg",
+    "comment": "",
+    "uploadedAt": "2025-10-27T21:34:26.091052",
+    "critique": null,
+    "exifData": {
+      "year": 2020,
+      "dateTime": "2020:05:10 12:01:22",
+      "camera": "Pixel 3a",
+      "make": "Google",
+      "software": "HDR+ 1.0.300173574zdh",
+      "hasExif": true
+    }
+  },
+  {
+    "id": "1761615270204",
+    "filename": "1761615270204.jpg",
+    "path": "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615270204.jpg",
+    "originalName": "IMG_20200510_120156.jpg",
+    "comment": "",
+    "uploadedAt": "2025-10-27T21:34:30.229089",
+    "critique": null,
+    "exifData": {
+      "year": 2020,
+      "dateTime": "2020:05:10 12:01:56",
+      "camera": "Pixel 3a",
+      "make": "Google",
+      "software": "HDR+ 1.0.300173574zdh",
+      "hasExif": true
+    }
+  },
+  {
+    "id": "1761615274062",
+    "filename": "1761615274062.jpg",
+    "path": "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615274062.jpg",
+    "originalName": "PXL_20201008_014524620.jpg",
+    "comment": "",
+    "uploadedAt": "2025-10-27T21:34:34.080976",
+    "critique": null,
+    "exifData": {
+      "year": 2020,
+      "dateTime": "2020:10:07 21:45:24",
+      "camera": "Pixel 3a",
+      "make": "Google",
+      "software": "HDR+ 1.0.326355476zdr",
+      "hasExif": true
+    }
+  },
+  {
+    "id": "1761615278450",
+    "filename": "1761615278450.HEIC",
+    "path": "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615278450.HEIC",
+    "originalName": "IMG_5409.HEIC",
+    "comment": "",
+    "uploadedAt": "2025-10-27T21:34:38.468470",
+    "critique": null,
+    "exifData": {
+      "year": 2021,
+      "dateTime": "2021:09:17 18:04:56",
+      "camera": "iPhone 11 Pro",
+      "make": "Apple",
+      "software": "14.4.2",
+      "hasExif": true
+    }
+  },
+  {
+    "id": "1761615283683",
+    "filename": "1761615283683.jpg",
+    "path": "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615283683.jpg",
+    "originalName": "IMG_20200728_212831.jpg",
+    "comment": "",
+    "uploadedAt": "2025-10-27T21:34:43.701067",
+    "critique": null,
+    "exifData": {
+      "year": 2020,
+      "dateTime": "2020:07:28 21:28:31",
+      "camera": "Pixel 3a",
+      "make": "Google",
+      "software": null,
+      "hasExif": true
+    }
+  },
+  {
+    "id": "1761615288729",
+    "filename": "1761615288729.jpg",
+    "path": "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615288729.jpg",
+    "originalName": "IMG_20200815_214811.jpg",
+    "comment": "",
+    "uploadedAt": "2025-10-27T21:34:48.749432",
+    "critique": null,
+    "exifData": {
+      "year": 2020,
+      "dateTime": "2020:08:15 21:48:11",
+      "camera": "Pixel 3a",
+      "make": "Google",
+      "software": "HDR+ 1.0.322479891zdr",
+      "hasExif": true
+    }
+  }
+]

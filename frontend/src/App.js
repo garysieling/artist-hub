@@ -1369,7 +1369,7 @@ function PhotoFinder({ skills }) {
   });
 
   // Photo category filter (My Photos, Reference Photos, Historical Art, My Art)
-  const [photoCategory, setPhotoCategory] = useState('My Photos');
+  const [photoCategory, setPhotoCategory] = useState('Reference Photos');
 
   // Image attribute analysis (for debugging indexer)
   const [analyzedAttributes, setAnalyzedAttributes] = useState({});
@@ -1550,7 +1550,34 @@ function PhotoFinder({ skills }) {
         const indexedMetadata = photoIndex.collections[collectionName] || {};
 
         photosData = photosData.filter(photo => {
-          const indexed = indexedMetadata[photo.path];
+          // Normalize path for lookup - convert absolute path to relative path
+          let lookupPath = photo.path;
+
+          // Extract just the relative part after the last directory separator that matters
+          // From: D:\projects\art-models\googlephotos\all\vacation2025\file.jpg
+          // To: all\vacation2025\file.jpg
+          const pathParts = photo.path.split('\\');
+          if (pathParts.length > 0) {
+            // Find if this is from "googlephotos" (My Photos), reference, or artwork directories
+            if (photoCategory === 'My Photos' || photoCategory === 'My Photos') {
+              // For My Photos, look for "all" directory and use everything from there
+              const allIndex = pathParts.findIndex(p => p.toLowerCase() === 'all');
+              if (allIndex !== -1) {
+                lookupPath = pathParts.slice(allIndex).join('\\');
+              }
+            } else if (photoCategory === 'Reference Photos') {
+              // For Reference Photos, try to find the relative portion
+              const refIndex = pathParts.findIndex(p =>
+                p.match(/^\d+$/) || // numeric directory like 4, 5, 8
+                p.toLowerCase().includes('reference')
+              );
+              if (refIndex !== -1) {
+                lookupPath = pathParts.slice(refIndex + 1).join('\\');
+              }
+            }
+          }
+
+          const indexed = indexedMetadata[lookupPath] || indexedMetadata[photo.path];
 
           // If no indexed metadata, show the photo (fallback)
           if (!indexed) return true;
@@ -2383,7 +2410,7 @@ function PhotoFinder({ skills }) {
           <button
             onClick={() => {
               setSearchQuery('');
-              setPhotoCategory('My Photos');
+              setPhotoCategory('Reference Photos');
               setFilters({
                 subjectType: 'All',
                 gender: 'All',
@@ -3648,13 +3675,15 @@ function PaintManager() {
   };
 
   const lookupColor = async () => {
-    if (!formData.name) return;
+    // Try pigment code first, fall back to name
+    const colorToLookup = formData.pigment || formData.name;
+    if (!colorToLookup) return;
 
     try {
       const response = await fetch(`${API_URL}/paints/lookup-color`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ color: formData.name })
+        body: JSON.stringify({ color: colorToLookup })
       });
 
       const data = await response.json();
@@ -3662,7 +3691,7 @@ function PaintManager() {
       if (data.success) {
         setFormData({ ...formData, rgb: data.rgb });
       } else {
-        alert('Could not find RGB values for this color name. You can enter them manually.');
+        alert('Could not find RGB values for this color name or pigment code. You can enter them manually.');
       }
     } catch (error) {
       console.error('Failed to lookup color:', error);

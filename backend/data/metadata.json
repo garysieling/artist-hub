@@ -1,4 +1,149 @@
 {
   "images": {},
-  "artwork": {}
+  "artwork": {
+    "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615218206.jpg": {
+      "exifData": {
+        "year": 2021,
+        "dateTime": "2021:02:28 16:30:08",
+        "camera": "Pixel 3a",
+        "make": "Google",
+        "software": "HDR+ 1.0.352609463zd",
+        "hasExif": true
+      },
+      "uploadedAt": "2025-10-27T21:33:38.272471",
+      "originalName": "PXL_20210228_213008897.jpg"
+    },
+    "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615226693.jpg": {
+      "exifData": {
+        "year": 2020,
+        "dateTime": "2020:05:18 17:59:38",
+        "camera": "Pixel 3a",
+        "make": "Google",
+        "software": "HDR+ 1.0.300173574zdh",
+        "hasExif": true
+      },
+      "uploadedAt": "2025-10-27T21:33:46.723830",
+      "originalName": "IMG_20200518_175938.jpg"
+    },
+    "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615234465.jpg": {
+      "exifData": {
+        "year": 2020,
+        "dateTime": "2020:05:26 12:41:58",
+        "camera": "Pixel 3a",
+        "make": "Google",
+        "software": "HDR+ 1.0.300173574zdh",
+        "hasExif": true
+      },
+      "uploadedAt": "2025-10-27T21:33:54.497160",
+      "originalName": "IMG_20200526_124158.jpg"
+    },
+    "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615241499.jpg": {
+      "exifData": {
+        "year": 2020,
+        "dateTime": "2020:04:25 16:40:05",
+        "camera": "Pixel 3a",
+        "make": "Google",
+        "software": "HDR+ 1.0.300173574zdh",
+        "hasExif": true
+      },
+      "uploadedAt": "2025-10-27T21:34:01.547223",
+      "originalName": "IMG_20200425_164005.jpg"
+    },
+    "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615251246.jpg": {
+      "exifData": {
+        "year": 2021,
+        "dateTime": "2021:05:30 21:38:48",
+        "camera": "Pixel 3a",
+        "make": "Google",
+        "software": "HDR+ 1.0.362396382zd",
+        "hasExif": true
+      },
+      "uploadedAt": "2025-10-27T21:34:11.281987",
+      "originalName": "PXL_20210531_013848084.jpg"
+    },
+    "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615259925.jpg": {
+      "exifData": {
+        "year": 2022,
+        "dateTime": "2022:06:23 08:51:56",
+        "camera": "Pixel 3a",
+        "make": "Google",
+        "software": "HDR+ 1.0.440402506zd",
+        "hasExif": true
+      },
+      "uploadedAt": "2025-10-27T21:34:19.962486",
+      "originalName": "PXL_20220623_125156476.MP.jpg"
+    },
+    "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615266055.jpg": {
+      "exifData": {
+        "year": 2020,
+        "dateTime": "2020:05:10 12:01:22",
+        "camera": "Pixel 3a",
+        "make": "Google",
+        "software": "HDR+ 1.0.300173574zdh",
+        "hasExif": true
+      },
+      "uploadedAt": "2025-10-27T21:34:26.104053",
+      "originalName": "IMG_20200510_120122.jpg"
+    },
+    "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615270204.jpg": {
+      "exifData": {
+        "year": 2020,
+        "dateTime": "2020:05:10 12:01:56",
+        "camera": "Pixel 3a",
+        "make": "Google",
+        "software": "HDR+ 1.0.300173574zdh",
+        "hasExif": true
+      },
+      "uploadedAt": "2025-10-27T21:34:30.245092",
+      "originalName": "IMG_20200510_120156.jpg"
+    },
+    "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615274062.jpg": {
+      "exifData": {
+        "year": 2020,
+        "dateTime": "2020:10:07 21:45:24",
+        "camera": "Pixel 3a",
+        "make": "Google",
+        "software": "HDR+ 1.0.326355476zdr",
+        "hasExif": true
+      },
+      "uploadedAt": "2025-10-27T21:34:34.095978",
+      "originalName": "PXL_20201008_014524620.jpg"
+    },
+    "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615278450.HEIC": {
+      "exifData": {
+        "year": 2021,
+        "dateTime": "2021:09:17 18:04:56",
+        "camera": "iPhone 11 Pro",
+        "make": "Apple",
+        "software": "14.4.2",
+        "hasExif": true
+      },
+      "uploadedAt": "2025-10-27T21:34:38.483471",
+      "originalName": "IMG_5409.HEIC"
+    },
+    "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615283683.jpg": {
+      "exifData": {
+        "year": 2020,
+        "dateTime": "2020:07:28 21:28:31",
+        "camera": "Pixel 3a",
+        "make": "Google",
+        "software": null,
+        "hasExif": true
+      },
+      "uploadedAt": "2025-10-27T21:34:43.717066",
+      "originalName": "IMG_20200728_212831.jpg"
+    },
+    "D:\\projects\\art-models\\artist-hub\\backend\\data\\uploads\\1761615288729.jpg": {
+      "exifData": {
+        "year": 2020,
+        "dateTime": "2020:08:15 21:48:11",
+        "camera": "Pixel 3a",
+        "make": "Google",
+        "software": "HDR+ 1.0.322479891zdr",
+        "hasExif": true
+      },
+      "uploadedAt": "2025-10-27T21:34:48.765434",
+      "originalName": "IMG_20200815_214811.jpg"
+    }
+  }
 }
